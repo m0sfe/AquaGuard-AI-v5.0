@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg-main: #060B18;
+  --bg-panel: #0A1020;
+  --card-bg: rgba(13, 25, 48, 0.72);
+  --card-border: rgba(34, 229, 255, 0.18);
+  --aqua: #22E5FF;
+  --cyan: #38BDF8;
+  --text-main: #F8FAFC;
+  --text-secondary: #CBD5E1;
+  --text-muted: #94A3B8;
+  --normal: #22C55E;
+  --leak: #F59E0B;
+  --burst: #EF4444;
+  --theft: #A855F7;
+  font-family: 'Tajawal', system-ui, sans-serif;
+  color: var(--text-main);
+  background: var(--bg-main);
+}
+
+* { box-sizing: border-box; }
+html { direction: rtl; background: var(--bg-main); }
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  direction: rtl;
+  color: var(--text-main);
+  font-family: 'Tajawal', system-ui, sans-serif;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(34,229,255,.14), transparent 34%),
+    radial-gradient(circle at 84% 18%, rgba(168,85,247,.10), transparent 32%),
+    linear-gradient(180deg,#060B18 0%,#081225 52%,#050A14 100%);
+  overflow-x: hidden;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: .28;
+  background-image:
+    linear-gradient(rgba(34,229,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34,229,255,.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at center, #000 0%, transparent 78%);
+  z-index: 0;
+}
+#root { min-height: 100vh; isolation: isolate; }
+button, input, textarea, select { font-family: 'Tajawal', system-ui, sans-serif; }
+[style*="monospace"], .number, .metric-value, .mono, svg text { font-family: 'IBM Plex Mono', 'Tajawal', monospace !important; }
+::selection { background: rgba(34,229,255,.28); color: #fff; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: rgba(6,11,24,.72); }
+::-webkit-scrollbar-thumb { background: rgba(34,229,255,.24); border-radius: 999px; border: 2px solid rgba(6,11,24,.85); }
+::-webkit-scrollbar-thumb:hover { background: rgba(34,229,255,.42); }
+@keyframes aqPulse { 0%,100% { transform: scale(1); opacity:.85; } 50% { transform: scale(1.25); opacity:.45; } }
+@keyframes aqGlow { 0%,100% { box-shadow: 0 0 0 rgba(34,229,255,0); } 50% { box-shadow: 0 0 28px rgba(34,229,255,.28); } }
+@media (max-width: 1100px) { body { font-size: 14px; } }

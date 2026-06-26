@@ -1,0 +1,4939 @@
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import {
+  LineChart,
+  Line,
+  ScatterChart,
+  Scatter,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RTooltip,
+  ResponsiveContainer,
+  RadialBarChart,
+  RadialBar,
+  AreaChart,
+  Area,
+} from 'recharts';
+import {
+  Activity,
+  AlertTriangle,
+  Zap,
+  Shield,
+  Droplets,
+  MapPin,
+  Radio,
+  TrendingDown,
+  ChevronDown,
+  Search,
+  RefreshCw,
+  Settings,
+  Eye,
+  Bell,
+  Cpu,
+  GitBranch,
+  Waves,
+  Target,
+  ArrowUpRight,
+  ArrowDownRight,
+  Gauge,
+  Sliders,
+  Database,
+} from 'lucide-react';
+
+// ══════════════════════════════════════════════════════════════════════════════
+// API CONFIGURATION — paste your ngrok URL here when running Colab backend
+// ══════════════════════════════════════════════════════════════════════════════
+const API_URL = 'https://abc123.ngrok.io'; // ← paste ngrok URL here
+
+async function apiPost(path, body) {
+  if (!API_URL) return null;
+  try {
+    const r = await fetch(API_URL + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      mode: 'cors',
+    });
+    return r.ok ? r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function apiGet(path) {
+  if (!API_URL) return null;
+  try {
+    const r = await fetch(API_URL + path, { mode: 'cors' });
+    return r.ok ? r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NETWORK DATA — All 12 Jordan Governorates (with reservoir capacities)
+// ══════════════════════════════════════════════════════════════════════════════
+// reservoirCap = initial reservoir capacity in م³ (realistic WAJ-style values)
+const NETWORK = {
+  Amman: {
+    label: 'عمّان',
+    source: 'King Abdullah Canal / Zai-WTP',
+    nrw: 0.43,
+    flowR: [80, 1400],
+    presR: [60, 125],
+    elev: 780,
+    pop: 5540,
+    color: '#c0c0c0',
+    target_nrw: 0.3,
+    reservoirCap: 180000,
+    branches: {
+      East: {
+        color: '#38bdf8',
+        segs: [
+          { f: 'AMM-رئيسي', t: 'Marka', len: 820, age: 22, hw: 125 },
+          { f: 'Marka', t: 'Abu-Nsair', len: 650, age: 28, hw: 118 },
+          { f: 'Abu-Nsair', t: 'Hashmi', len: 480, age: 35, hw: 108 },
+          { f: 'Hashmi', t: 'Basman', len: 390, age: 40, hw: 100 },
+        ],
+      },
+      West: {
+        color: '#22c55e',
+        segs: [
+          { f: 'AMM-رئيسي', t: 'Abdoun', len: 750, age: 15, hw: 140 },
+          { f: 'Abdoun', t: 'Sweifieh', len: 620, age: 18, hw: 136 },
+          { f: 'Sweifieh', t: 'Jubaiha', len: 530, age: 22, hw: 128 },
+          { f: 'Jubaiha', t: 'Khilda', len: 460, age: 20, hw: 132 },
+        ],
+      },
+      North: {
+        color: '#f59e0b',
+        segs: [
+          { f: 'AMM-رئيسي', t: 'Shmeisani', len: 680, age: 20, hw: 132 },
+          { f: 'Shmeisani', t: 'Rabieh', len: 710, age: 25, hw: 126 },
+          { f: 'Rabieh', t: 'Tla-Ali', len: 590, age: 18, hw: 138 },
+        ],
+      },
+      South: {
+        color: '#a855f7',
+        segs: [
+          { f: 'AMM-رئيسي', t: 'Sahab', len: 900, age: 30, hw: 115 },
+          { f: 'Sahab', t: 'Yadoudeh', len: 800, age: 35, hw: 108 },
+          { f: 'Yadoudeh', t: 'Muwaqqar', len: 720, age: 40, hw: 102 },
+        ],
+      },
+      Central: {
+        color: '#ef4444',
+        segs: [
+          { f: 'AMM-رئيسي', t: 'Gardens', len: 600, age: 12, hw: 145 },
+          { f: 'Gardens', t: 'Um-Uthaina', len: 550, age: 15, hw: 141 },
+          { f: 'Um-Uthaina', t: 'Khalda', len: 490, age: 18, hw: 138 },
+        ],
+      },
+    },
+  },
+  Irbid: {
+    label: 'إربد',
+    source: 'Yarmouk River WTP',
+    nrw: 0.45,
+    flowR: [60, 800],
+    presR: [45, 100],
+    elev: 620,
+    pop: 3280,
+    color: '#22c55e',
+    target_nrw: 0.32,
+    reservoirCap: 95000,
+    branches: {
+      Central: {
+        color: '#38bdf8',
+        segs: [
+          { f: 'IRB-رئيسي', t: 'Husn', len: 700, age: 20, hw: 130 },
+          { f: 'Husn', t: 'Manara', len: 620, age: 25, hw: 122 },
+          { f: 'Manara', t: 'Ramtha', len: 550, age: 30, hw: 115 },
+        ],
+      },
+      North: {
+        color: '#22c55e',
+        segs: [
+          { f: 'IRB-رئيسي', t: 'Al-Huson', len: 680, age: 18, hw: 135 },
+          { f: 'Al-Huson', t: 'Bait-Ras', len: 590, age: 22, hw: 128 },
+          { f: 'Bait-Ras', t: 'Kufr-Asad', len: 510, age: 28, hw: 120 },
+        ],
+      },
+      West: {
+        color: '#f59e0b',
+        segs: [
+          { f: 'IRB-رئيسي', t: 'Koura', len: 850, age: 35, hw: 108 },
+          { f: 'Koura', t: 'Kufrinja', len: 780, age: 40, hw: 100 },
+          { f: 'Kufrinja', t: 'Deir-Said', len: 650, age: 45, hw: 95 },
+        ],
+      },
+      South: {
+        color: '#a855f7',
+        segs: [
+          { f: 'IRB-رئيسي', t: 'Aydoun', len: 760, age: 28, hw: 118 },
+          { f: 'Aydoun', t: 'Bani-Kinana', len: 680, age: 32, hw: 112 },
+          { f: 'Bani-Kinana', t: 'Tibne', len: 600, age: 38, hw: 106 },
+        ],
+      },
+    },
+  },
+  Zarqa: {
+    label: 'الزرقاء',
+    source: 'Zarqa Municipal Reservoirs',
+    nrw: 0.52,
+    flowR: [50, 620],
+    presR: [35, 90],
+    elev: 580,
+    pop: 4120,
+    color: '#f59e0b',
+    target_nrw: 0.35,
+    reservoirCap: 72000,
+    branches: {
+      'Old-City': {
+        color: '#38bdf8',
+        segs: [
+          { f: 'ZRQ-رئيسي', t: 'Zarqa-Center', len: 920, age: 42, hw: 96 },
+          { f: 'Zarqa-Center', t: 'Rusaifa', len: 850, age: 48, hw: 90 },
+          { f: 'Rusaifa', t: 'New-Zarqa', len: 780, age: 52, hw: 86 },
+        ],
+      },
+      Industrial: {
+        color: '#22c55e',
+        segs: [
+          { f: 'ZRQ-رئيسي', t: 'Ind-Zone', len: 800, age: 30, hw: 112 },
+          { f: 'Ind-Zone', t: 'Hashimiyya', len: 720, age: 35, hw: 106 },
+          { f: 'Hashimiyya', t: 'Dhiban', len: 650, age: 38, hw: 101 },
+        ],
+      },
+      East: {
+        color: '#f59e0b',
+        segs: [
+          { f: 'ZRQ-رئيسي', t: 'Azraq', len: 1200, age: 20, hw: 138 },
+          { f: 'Azraq', t: 'Safawi', len: 1100, age: 15, hw: 142 },
+          { f: 'Safawi', t: 'Ruwaished', len: 900, age: 12, hw: 146 },
+        ],
+      },
+    },
+  },
+  Karak: {
+    label: 'الكرك',
+    source: 'Karak WAJ Supply',
+    nrw: 0.56,
+    flowR: [15, 220],
+    presR: [25, 72],
+    elev: 930,
+    pop: 85,
+    color: '#ef4444',
+    target_nrw: 0.38,
+    reservoirCap: 28000,
+    branches: {
+      Central: {
+        color: '#38bdf8',
+        segs: [
+          { f: 'KRK-رئيسي', t: 'Karak-City', len: 950, age: 45, hw: 90 },
+          { f: 'Karak-City', t: 'Mazar', len: 880, age: 50, hw: 85 },
+          { f: 'Mazar', t: 'Mutah', len: 800, age: 55, hw: 80 },
+        ],
+      },
+      North: {
+        color: '#22c55e',
+        segs: [
+          { f: 'KRK-رئيسي', t: 'Al-Qasr', len: 820, age: 38, hw: 98 },
+          { f: 'Al-Qasr', t: 'Safi', len: 760, age: 42, hw: 93 },
+          { f: 'Safi', t: 'Al-Lajjun', len: 680, age: 48, hw: 87 },
+        ],
+      },
+    },
+  },
+  Aqaba: {
+    label: 'العقبة',
+    source: 'Aqaba Desalination Plant',
+    nrw: 0.41,
+    flowR: [25, 380],
+    presR: [35, 92],
+    elev: 10,
+    pop: 310,
+    color: '#06b6d4',
+    target_nrw: 0.28,
+    reservoirCap: 45000,
+    branches: {
+      Port: {
+        color: '#38bdf8',
+        segs: [
+          { f: 'AQB-رئيسي', t: 'Aqaba-Port', len: 700, age: 20, hw: 132 },
+          { f: 'Aqaba-Port', t: 'Ind-Zone-AQ', len: 650, age: 25, hw: 126 },
+          { f: 'Ind-Zone-AQ', t: 'South-Aqaba', len: 580, age: 18, hw: 138 },
+        ],
+      },
+      Residential: {
+        color: '#22c55e',
+        segs: [
+          { f: 'AQB-رئيسي', t: 'Aqaba-Center', len: 620, age: 15, hw: 140 },
+          { f: 'Aqaba-Center', t: 'Quweira', len: 580, age: 20, hw: 134 },
+          { f: 'Quweira', t: 'Wadi-Rum', len: 520, age: 25, hw: 128 },
+        ],
+      },
+    },
+  },
+  Mafraq: {
+    label: 'المفرق',
+    source: 'Mafraq Groundwater Wells',
+    nrw: 0.5,
+    flowR: [20, 320],
+    presR: [28, 78],
+    elev: 690,
+    pop: 13,
+    color: '#8b5cf6',
+    target_nrw: 0.33,
+    reservoirCap: 35000,
+    branches: {
+      Central: {
+        color: '#38bdf8',
+        segs: [
+          { f: 'MFQ-رئيسي', t: 'Mafraq-City', len: 1100, age: 15, hw: 140 },
+          { f: 'Mafraq-City', t: 'Rhab', len: 980, age: 18, hw: 136 },
+          { f: 'Rhab', t: 'Umm-Jimal', len: 850, age: 22, hw: 130 },
+        ],
+      },
+      North: {
+        color: '#22c55e',
+        segs: [
+          { f: 'MFQ-رئيسي', t: 'Safawi-Town', len: 1300, age: 12, hw: 145 },
+          { f: 'Safawi-Town', t: 'Ruwaished-N', len: 1200, age: 15, hw: 142 },
+          { f: 'Ruwaished-N', t: 'Azraq-N', len: 1100, age: 18, hw: 138 },
+        ],
+      },
+    },
+  },
+  Maan: {
+    label: 'معان',
+    source: 'Maan Groundwater Wells',
+    nrw: 0.55,
+    flowR: [8, 170],
+    presR: [20, 68],
+    elev: 1070,
+    pop: 4,
+    color: '#fb923c',
+    target_nrw: 0.36,
+    reservoirCap: 22000,
+    branches: {
+      City: {
+        color: '#38bdf8',
+        segs: [
+          { f: 'MAN-رئيسي', t: 'Maan-Center', len: 950, age: 18, hw: 138 },
+          { f: 'Maan-Center', t: 'Qatraneh', len: 880, age: 22, hw: 132 },
+          { f: 'Qatraneh', t: 'Jafr', len: 800, age: 28, hw: 125 },
+        ],
+      },
+      South: {
+        color: '#22c55e',
+        segs: [
+          { f: 'MAN-رئيسي', t: 'Wadi-Musa', len: 1050, age: 22, hw: 132 },
+          { f: 'Wadi-Musa', t: 'Shobak', len: 980, age: 28, hw: 125 },
+          { f: 'Shobak', t: 'Ras-Naqab', len: 900, age: 35, hw: 117 },
+        ],
+      },
+    },
+  },
+  Ajloun: {
+    label: 'عجلون',
+    source: 'Ajloun Spring Network',
+    nrw: 0.54,
+    flowR: [5, 120],
+    presR: [22, 62],
+    elev: 1250,
+    pop: 393,
+    color: '#84cc16',
+    target_nrw: 0.35,
+    reservoirCap: 18000,
+    branches: {
+      Central: {
+        color: '#38bdf8',
+        segs: [
+          { f: 'AJL-رئيسي', t: 'Ajloun-City', len: 750, age: 35, hw: 100 },
+          { f: 'Ajloun-City', t: 'Anjara', len: 680, age: 40, hw: 95 },
+          { f: 'Anjara', t: 'Orjan', len: 600, age: 45, hw: 90 },
+        ],
+      },
+      North: {
+        color: '#22c55e',
+        segs: [
+          { f: 'AJL-رئيسي', t: 'Shtafina', len: 820, age: 30, hw: 105 },
+          { f: 'Shtafina', t: 'Rasun', len: 750, age: 35, hw: 100 },
+        ],
+      },
+    },
+  },
+  Jerash: {
+    label: 'جرش',
+    source: 'Jerash WAJ Network',
+    nrw: 0.48,
+    flowR: [8, 150],
+    presR: [25, 68],
+    elev: 600,
+    pop: 585,
+    color: '#10b981',
+    target_nrw: 0.32,
+    reservoirCap: 20000,
+    branches: {
+      City: {
+        color: '#38bdf8',
+        segs: [
+          { f: 'JRS-رئيسي', t: 'Jerash-City', len: 700, age: 25, hw: 115 },
+          { f: 'Jerash-City', t: 'Sakeb', len: 640, age: 30, hw: 108 },
+          { f: 'Sakeb', t: 'Kufr-Khall', len: 580, age: 35, hw: 102 },
+        ],
+      },
+      South: {
+        color: '#22c55e',
+        segs: [
+          { f: 'JRS-رئيسي', t: 'Al-Hashimiyya', len: 780, age: 20, hw: 122 },
+          { f: 'Al-Hashimiyya', t: 'Beit-Ras-J', len: 720, age: 25, hw: 116 },
+        ],
+      },
+    },
+  },
+  Madaba: {
+    label: 'مادبا',
+    source: 'Madaba Municipal Wells',
+    nrw: 0.51,
+    flowR: [10, 200],
+    presR: [28, 72],
+    elev: 800,
+    pop: 202,
+    color: '#f472b6',
+    target_nrw: 0.34,
+    reservoirCap: 24000,
+    branches: {
+      City: {
+        color: '#38bdf8',
+        segs: [
+          { f: 'MDB-رئيسي', t: 'Madaba-City', len: 800, age: 28, hw: 112 },
+          { f: 'Madaba-City', t: 'Libb', len: 740, age: 32, hw: 106 },
+          { f: 'Libb', t: 'Yadoudeh-M', len: 680, age: 38, hw: 100 },
+        ],
+      },
+      East: {
+        color: '#22c55e',
+        segs: [
+          { f: 'MDB-رئيسي', t: 'Dhiban', len: 900, age: 22, hw: 118 },
+          { f: 'Dhiban', t: 'Ar-Rabbah', len: 840, age: 28, hw: 112 },
+        ],
+      },
+    },
+  },
+  Balqa: {
+    label: 'البلقاء',
+    source: 'Balqa WAJ Supply',
+    nrw: 0.47,
+    flowR: [15, 280],
+    presR: [30, 80],
+    elev: 900,
+    pop: 455,
+    color: '#67e8f9',
+    target_nrw: 0.31,
+    reservoirCap: 32000,
+    branches: {
+      Central: {
+        color: '#38bdf8',
+        segs: [
+          { f: 'BLQ-رئيسي', t: 'Salt-City', len: 750, age: 20, hw: 125 },
+          { f: 'Salt-City', t: 'Shuneh-N', len: 700, age: 25, hw: 118 },
+          { f: 'Shuneh-N', t: 'Kafrein', len: 650, age: 30, hw: 112 },
+        ],
+      },
+      West: {
+        color: '#22c55e',
+        segs: [
+          { f: 'BLQ-رئيسي', t: 'Wadi-Sir', len: 680, age: 15, hw: 130 },
+          { f: 'Wadi-Sir', t: 'Naur', len: 620, age: 20, hw: 124 },
+          { f: 'Naur', t: 'Abu-Nsair-B', len: 560, age: 25, hw: 118 },
+        ],
+      },
+    },
+  },
+  Tafilah: {
+    label: 'الطفيلة',
+    source: 'Tafilah Groundwater',
+    nrw: 0.53,
+    flowR: [5, 100],
+    presR: [20, 65],
+    elev: 1100,
+    pop: 48,
+    color: '#fbbf24',
+    target_nrw: 0.36,
+    reservoirCap: 16000,
+    branches: {
+      Central: {
+        color: '#38bdf8',
+        segs: [
+          { f: 'TFL-رئيسي', t: 'Tafilah-City', len: 850, age: 30, hw: 108 },
+          { f: 'Tafilah-City', t: 'Busaira', len: 800, age: 35, hw: 102 },
+          { f: 'Busaira', t: 'Aina', len: 720, age: 40, hw: 96 },
+        ],
+      },
+      North: {
+        color: '#22c55e',
+        segs: [
+          { f: 'TFL-رئيسي', t: 'Qadisiyya', len: 900, age: 25, hw: 112 },
+          { f: 'Qadisiyya', t: 'Habis', len: 820, age: 30, hw: 106 },
+        ],
+      },
+    },
+  },
+  NationalCarrier: {
+    label: 'الناقل الوطني',
+    source: 'Red Sea Intake / Aqaba → Amman Delivery Corridor',
+    nrw: 0.12,
+    flowR: [570000, 588000],
+    presR: [102, 148],
+    elev: 910,
+    pop: 11000,
+    color: '#06b6d4',
+    target_nrw: 0.18,
+    reservoirCap: 25000000,
+    branches: {
+      'Carrier Corridor': {
+        color: '#e5e7eb',
+        segs: [
+          { f: 'Intake', t: 'BPS2', len: 12000, age: 3, hw: 145 },
+          { f: 'BPS2', t: 'BPS3', len: 18000, age: 3, hw: 145 },
+          { f: 'BPS3', t: 'RGT1', len: 24000, age: 4, hw: 144 },
+          { f: 'RGT1', t: 'BPS4', len: 27000, age: 4, hw: 144 },
+          { f: 'BPS4', t: 'RGT2', len: 26000, age: 5, hw: 143 },
+          { f: 'RGT2', t: 'BPT', len: 31000, age: 5, hw: 143 },
+          { f: 'BPT', t: 'PS ADC', len: 19000, age: 6, hw: 142 },
+          { f: 'PS ADC', t: 'AL MUNTAZAH', len: 7000, age: 6, hw: 142 },
+          { f: 'PS ADC', t: 'ABU ALANDA', len: 5000, age: 6, hw: 142 },
+        ],
+      },
+    },
+  },
+};
+
+const NATIONAL_CARRIER_KEY = 'NationalCarrier';
+const NATIONAL_CARRIER_ROUTE = [
+  {
+    code: 'Intake',
+    label: 'Intake',
+    kind: 'intake',
+    gov: 'البحر الأحمر',
+    x: 50,
+    y: 430,
+  },
+
+  { code: 'BPS2', label: 'BPS2', kind: 'pump', gov: 'العقبة', x: 128, y: 420 },
+  { code: 'BPS3', label: 'BPS3', kind: 'pump', gov: 'العقبة', x: 170, y: 360 },
+
+  { code: 'RGT1', label: 'RGT1', kind: 'reg', gov: 'معان', x: 350, y: 390 },
+  { code: 'BPS4', label: 'BPS4', kind: 'pump', gov: 'معان', x: 400, y: 280 },
+  { code: 'RGT2', label: 'RGT2', kind: 'reg', gov: 'معان', x: 490, y: 199 },
+  { code: 'BPT', label: 'BPT', kind: 'tank', gov: 'معان', x: 500, y: 140 },
+
+  { code: 'PS ADC', label: 'PS ADC', kind: 'hub', gov: 'عمّان', x: 490, y: 92 },
+
+  /* نقطة تفرع مخفية لتحسين شكل التفرع */
+  {
+    code: 'AMMAN_SPLIT',
+    label: '',
+    kind: 'hidden',
+    gov: 'عمّان',
+    x: 1000,
+    y: 78,
+    hidden: true,
+  },
+
+  {
+    code: 'AL MUNTAZAH',
+    label: 'AL MUNTAZAH',
+    kind: 'terminal-red',
+    gov: 'عمّان',
+    x: 400,
+    y: 70,
+  },
+  {
+    code: 'ABU ALANDA',
+    label: 'ABU ALANDA',
+    kind: 'terminal-red',
+    gov: 'عمّان',
+    x: 460,
+    y: 40,
+  },
+];
+
+const ANOMALY_TYPES = ['normal', 'leak', 'burst', 'theft'];
+const TYPE_CONFIG = {
+  normal: {
+    color: '#22c55e',
+    glow: '#22c55e40',
+    label: 'طبيعي',
+    icon: '✓',
+    urgency: 0,
+  },
+  leak: {
+    color: '#f59e0b',
+    glow: '#f59e0b40',
+    label: 'تسرب',
+    icon: '~',
+    urgency: 2,
+  },
+  burst: {
+    color: '#ef4444',
+    glow: '#ef444440',
+    label: 'انفجار',
+    icon: '!',
+    urgency: 3,
+  },
+  theft: {
+    color: '#a855f7',
+    glow: '#a855f740',
+    label: 'سرقة',
+    icon: '?',
+    urgency: 1,
+  },
+};
+
+const BRANCH_LABELS_AR = {
+  East: 'الفرع الشرقي',
+  West: 'الفرع الغربي',
+  North: 'الفرع الشمالي',
+  South: 'الفرع الجنوبي',
+  Central: 'الفرع المركزي',
+  Industrial: 'الفرع الصناعي',
+  Rural: 'الفرع الريفي',
+  Highway: 'فرع الطريق السريع',
+  'Old-City': 'فرع المدينة القديمة',
+  Main: 'الفرع الرئيسي',
+};
+
+const getBranchLabelAr = (branch = '') =>
+  BRANCH_LABELS_AR[branch] || branch.replace(/^[^-]+-/, '').replace(/-/g, ' ');
+
+const formatDayTimeTick = (index = 0, total = 30) => {
+  const safeTotal = Math.max(total - 1, 1);
+  const hour = Math.round((index / safeTotal) * 24);
+  return `${String(Math.min(hour, 24)).padStart(2, '0')}:00`;
+};
+
+
+const UPDATE_INTERVAL_SEC = 15;
+const طبيعي_PIPE_COLOR = '#6b7280';
+const طبيعي_PIPE_EDGE = '#9ca3af';
+const طبيعي_CONNECTOR_COLOR = '#4b5563';
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PHYSICS & ML INFERENCE (unchanged)
+// ══════════════════════════════════════════════════════════════════════════════
+function darcyDP(flowLpm, lengthM, hw = 128) {
+  const D = 0.05,
+    Q = Math.max(flowLpm, 0.1) / 60000,
+    A = Math.PI * (D / 2) ** 2;
+  const v = Q / A,
+    Re = Math.max((v * D) / 1.004e-6, 1);
+  const eps = 0.26e-3 / D;
+  const Ac = (-2.457 * Math.log((7 / Re) ** 0.9 + 0.27 * eps)) ** 16;
+  const Bc = (37530 / Re) ** 16;
+  const f = 8 * ((8 / Re) ** 12 + (Ac + Bc) ** -1.5) ** (1 / 12);
+  return Math.min(
+    Math.max(f * (lengthM / D) * (v ** 2 / 19.62) * 1.422, 0.01),
+    60
+  );
+}
+
+function mlInfer(seg) {
+  const { flowLoss, dpDev, excessLoss, pipeAge } = seg;
+  const lgb = Math.min(
+    1,
+    (flowLoss * 0.4 + Math.abs(dpDev) * 0.3 + excessLoss * 0.3) / 20
+  );
+  const xgb = Math.min(
+    1,
+    (flowLoss * 0.45 + pipeAge * 0.002 + excessLoss * 0.35) / 20
+  );
+  const nn = Math.min(
+    1,
+    (flowLoss * 0.5 + Math.abs(dpDev) * 0.25 + excessLoss * 0.25) / 20
+  );
+  const lstm = Math.min(
+    1,
+    (flowLoss * 0.35 + Math.abs(dpDev) * 0.4 + excessLoss * 0.25) / 20
+  );
+  return {
+    lgb: +(lgb * 100).toFixed(1),
+    xgb: +(xgb * 100).toFixed(1),
+    nn: +(nn * 100).toFixed(1),
+    lstm: +(lstm * 100).toFixed(1),
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// HYDRAULIC MASS-BALANCE SIMULATION
+// ══════════════════════════════════════════════════════════════════════════════
+// Key contract: reservoir → branches → segments — all volumes add up.
+// Every 15s the pump fires: total branch inflow leaves the reservoir.
+// NRW loss factor: a fraction of that outflow "disappears" (leaks/theft)
+// so it is tracked separately as systemLoss.
+
+function simulateGov(govKey, forcedType = null) {
+  const gov = NETWORK[govKey];
+  const h = new Date().getHours();
+  const peakFactor =
+    (h >= 7 && h <= 9) || (h >= 18 && h <= 21) ? 1.35 : h < 5 ? 0.45 : 1.0;
+  const results = [];
+  const alerts = [];
+  const branchInflows = {}; // branchName → لتر/دقيقةin inflow
+  let totalBranchInflow = 0;
+
+  Object.entries(gov.branches).forEach(([branchName, branch]) => {
+    let flowIn =
+      (gov.flowR[0] + Math.random() * (gov.flowR[1] - gov.flowR[0])) *
+      peakFactor;
+    let pressIn = gov.presR[0] + Math.random() * (gov.presR[1] - gov.presR[0]);
+    const branchEntryFlow = flowIn;
+    branchInflows[branchName] = branchEntryFlow;
+    totalBranchInflow += branchEntryFlow;
+
+    const faultIdx =
+      forcedType && forcedType !== 'normal'
+        ? Math.floor(Math.random() * branch.segs.length)
+        : -1;
+
+    branch.segs.forEach((seg, si) => {
+      const isForcedFault = si === faultIdx;
+      const ftype = isForcedFault
+        ? forcedType || null
+        : Math.random() < gov.nrw * 0.15
+        ? ANOMALY_TYPES[Math.floor(Math.random() * 4)]
+        : 'normal';
+      const dpPred = darcyDP(flowIn, seg.len, seg.hw);
+      let sev = 0,
+        flowOut = flowIn,
+        pressOut = pressIn;
+
+      if (ftype === 'leak') {
+        sev = 0.04 + Math.random() * 0.14;
+        flowOut = flowIn * (1 - sev);
+        pressOut = pressIn - dpPred - sev * pressIn * 0.5;
+      } else if (ftype === 'burst') {
+        sev = 0.25 + Math.random() * 0.47;
+        flowOut = flowIn * (1 - sev);
+        pressOut = pressIn - dpPred - sev * pressIn * 0.8;
+      } else if (ftype === 'theft') {
+        sev = 0.05 + Math.random() * 0.09;
+        flowOut = flowIn * (1 - sev);
+        pressOut = pressIn - dpPred - sev * pressIn * 0.1;
+      } else {
+        const bg = 0.003 + seg.age / 5000;
+        flowOut = flowIn * (1 - bg);
+        pressOut = pressIn - dpPred;
+      }
+
+      flowOut = Math.max(flowOut + Math.random() * 0.5 - 0.25, 0.1);
+      pressOut = Math.max(pressOut + Math.random() * 0.3 - 0.15, 0.5);
+      const flowLoss = ((flowIn - flowOut) / flowIn) * 100;
+      const dpActual = pressIn - pressOut;
+      const dpDev = dpActual - dpPred;
+      const bgRate = (0.003 + seg.age / 5000) * 100;
+      const excessLoss = Math.max(flowLoss - bgRate, 0);
+      const models = mlInfer({ flowLoss, dpDev, excessLoss, pipeAge: seg.age });
+      const conf = Math.min(
+        0.99,
+        (models.lgb + models.xgb + models.nn + models.lstm) / 400
+      );
+
+      const segData = {
+        id: `${govKey}-${branchName}-D${si + 1}`,
+        branch: branchName,
+        depth: si + 1,
+        from: seg.f,
+        to: seg.t,
+        len: seg.len,
+        age: seg.age,
+        hw: seg.hw,
+        flowIn: +flowIn.toFixed(2),
+        flowOut: +flowOut.toFixed(2),
+        flowLoss: +flowLoss.toFixed(2),
+        excessLoss: +excessLoss.toFixed(2),
+        pressIn: +pressIn.toFixed(2),
+        pressOut: +pressOut.toFixed(2),
+        dpPred: +dpPred.toFixed(3),
+        dpDev: +dpDev.toFixed(3),
+        predType: ftype,
+        severity: +sev.toFixed(3),
+        confidence: +conf.toFixed(3),
+        models,
+        faultHere: ftype !== 'normal' ? 1 : 0,
+        branchColor: branch.color,
+        alert: ftype !== 'normal',
+      };
+      results.push(segData);
+      if (ftype !== 'normal')
+        alerts.push({ ...segData, ts: new Date().toLocaleTimeString() });
+      flowIn = flowOut;
+      pressIn = pressOut;
+    });
+  });
+
+  // ─── Mass balance: لتر/دقيقةin → م³ per configurable pump cycle ────────────────
+  // totalBranchInflow is لتر/دقيقةin; cycle is UPDATE_INTERVAL_SEC → multiply by (UPDATE_INTERVAL_SEC/60)/1000
+  const DEMO_SPEED = govKey === NATIONAL_CARRIER_KEY ? 1 : 150;
+  const cycleOutflowM3 =
+    ((totalBranchInflow * (UPDATE_INTERVAL_SEC / 60)) / 1000) * DEMO_SPEED;
+  const systemLossM3 = cycleOutflowM3 * gov.nrw; // NRW portion
+  const deliveredM3 = cycleOutflowM3 - systemLossM3; // what reached customers
+
+  return {
+    segments: results,
+    alerts,
+    mass: {
+      branchInflows, // لتر/دقيقةin per branch
+      totalBranchInflow, // لتر/دقيقةin total
+      totalOutflowLpm: totalBranchInflow, // alias
+      totalOutflowM3PerHr: +((totalBranchInflow * 60) / 1000).toFixed(1),
+      cycleOutflowM3: +cycleOutflowM3.toFixed(2),
+      systemLossM3: +systemLossM3.toFixed(2),
+      deliveredM3: +deliveredM3.toFixed(2),
+    },
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// الخزان TANK (vertical gauge)
+// ══════════════════════════════════════════════════════════════════════════════
+function ReservoirTank({ currentM3, capacityM3, pulsing, govColor }) {
+  const pct = Math.max(0, Math.min(100, (currentM3 / capacityM3) * 100));
+  const levelColor = pct > 60 ? '#22c55e' : pct > 30 ? '#f59e0b' : '#ef4444';
+
+  const [waveOffset, setWaveOffset] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setWaveOffset((o) => (o + 1) % 48), 80);
+    return () => clearInterval(id);
+  }, []);
+
+  const W = 126,
+    H = 196;
+  const tankX = 18,
+    tankY = 26,
+    tankW = 82,
+    tankH = 136,
+    rx = tankW / 2,
+    ry = 11;
+  const waterBottomY = tankY + tankH;
+  const waterTopY = tankY + tankH - (pct / 100) * tankH;
+
+  let wavePath = `M ${tankX} ${waterTopY}`;
+  for (let x = tankX; x <= tankX + tankW; x += 2) {
+    const y = waterTopY + Math.sin(((x + waveOffset) / 18) * Math.PI * 2) * 2.8;
+    wavePath += ` L ${x} ${y}`;
+  }
+  wavePath += ` L ${
+    tankX + tankW
+  } ${waterBottomY} L ${tankX} ${waterBottomY} Z`;
+
+  return (
+    <div style={{ position: 'relative', width: W, height: H, flexShrink: 0 }}>
+      <svg width={W} height={H} style={{ display: 'block' }}>
+        <defs>
+          <linearGradient id="tankOuterGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#1e293b" />
+            <stop offset="45%" stopColor="#0f172a" />
+            <stop offset="100%" stopColor="#020617" />
+          </linearGradient>
+          <linearGradient id="tankFrontGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#334155" stopOpacity="0.92" />
+            <stop offset="22%" stopColor="#0f172a" stopOpacity="0.98" />
+            <stop offset="55%" stopColor="#1e293b" stopOpacity="0.95" />
+            <stop offset="100%" stopColor="#020617" stopOpacity="1" />
+          </linearGradient>
+          <linearGradient id="waterCylinderGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={levelColor} stopOpacity="0.52" />
+            <stop offset="20%" stopColor={levelColor} stopOpacity="0.88" />
+            <stop offset="50%" stopColor="#ffffff" stopOpacity="0.25" />
+            <stop offset="80%" stopColor={levelColor} stopOpacity="0.82" />
+            <stop offset="100%" stopColor={levelColor} stopOpacity="0.45" />
+          </linearGradient>
+          <linearGradient id="waterTopGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.35" />
+            <stop offset="100%" stopColor={levelColor} stopOpacity="0.9" />
+          </linearGradient>
+          <filter id="tankShadow" x="-20%" y="-20%" width="140%" height="160%">
+            <feDropShadow
+              dx="0"
+              dy="8"
+              stdDeviation="8"
+              floodColor="#000000"
+              floodOpacity="0.35"
+            />
+          </filter>
+          <filter id="tankGlow">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        <ellipse
+          cx={tankX + rx}
+          cy={tankY}
+          rx={rx}
+          ry={ry}
+          fill="url(#tankOuterGrad)"
+          stroke={pulsing ? levelColor : govColor}
+          strokeWidth={pulsing ? '2' : '1.5'}
+          filter={pulsing ? 'url(#tankGlow)' : undefined}
+        />
+
+        <rect
+          x={tankX}
+          y={tankY}
+          width={tankW}
+          height={tankH}
+          fill="url(#tankFrontGrad)"
+          stroke={pulsing ? levelColor : govColor}
+          strokeWidth={pulsing ? '2' : '1.5'}
+          filter="url(#tankShadow)"
+          style={{ transition: 'stroke .3s' }}
+        />
+
+        <ellipse
+          cx={tankX + rx}
+          cy={tankY + tankH}
+          rx={rx}
+          ry={ry}
+          fill="#020617"
+          stroke={pulsing ? levelColor : govColor}
+          strokeWidth={pulsing ? '2' : '1.5'}
+        />
+
+        {pct > 0 && (
+          <>
+            <path d={wavePath} fill="url(#waterCylinderGrad)" opacity="0.95" />
+            <ellipse
+              cx={tankX + rx}
+              cy={waterTopY}
+              rx={rx - 1}
+              ry={ry - 2}
+              fill="url(#waterTopGrad)"
+              stroke={levelColor}
+              strokeOpacity="0.8"
+              strokeWidth="1"
+            />
+            <line
+              x1={tankX + 12}
+              y1={tankY + 14}
+              x2={tankX + 12}
+              y2={tankY + tankH - 10}
+              stroke="#ffffff"
+              strokeOpacity="0.18"
+              strokeWidth="4"
+              strokeLinecap="round"
+            />
+          </>
+        )}
+
+        {[25, 50, 75].map((t) => {
+          const y = tankY + tankH - (t / 100) * tankH;
+          return (
+            <g key={t}>
+              <line
+                x1={tankX + tankW + 2}
+                y1={y}
+                x2={tankX + tankW + 11}
+                y2={y}
+                stroke="#475569"
+                strokeWidth="0.8"
+              />
+              <text
+                x={tankX + tankW + 14}
+                y={y + 3}
+                fill="#64748b"
+                fontSize="7"
+                fontFamily="monospace"
+              >
+                {t}%
+              </text>
+            </g>
+          );
+        })}
+
+        <rect
+          x={43}
+          y="7"
+          width="32"
+          height="12"
+          rx="3"
+          fill="#334155"
+          stroke="#475569"
+        />
+        <rect x={54} y="2" width="10" height="7" rx="2" fill="#64748b" />
+
+        <text
+          x={tankX + rx}
+          y={tankY + tankH / 2 + 6}
+          fill="#f8fafc"
+          fontSize="18"
+          fontWeight="700"
+          fontFamily="monospace"
+          textAnchor="middle"
+          style={{ textShadow: '0 0 6px rgba(0,0,0,.9)' }}
+        >
+          {pct.toFixed(1)}%
+        </text>
+
+        {pulsing && (
+          <circle cx={tankX + tankW - 6} cy={tankY - 2} r="4" fill="#22d3ee">
+            <animate
+              attributeName="r"
+              values="3;6;3"
+              dur="0.8s"
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="opacity"
+              values="1;0.3;1"
+              dur="0.8s"
+              repeatCount="indefinite"
+            />
+          </circle>
+        )}
+      </svg>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PIPE NETWORK SVG
+// ══════════════════════════════════════════════════════════════════════════════
+
+function NationalCarrierMap({
+  segments,
+  onSegClick,
+  selectedSeg,
+  pumping,
+  totalOutflowM3PerHr,
+}) {
+  const W = 940;
+  const H = 560;
+  const mapX = 32;
+  const mapY = 34;
+
+  const annualالهدف = 300000000;
+  const monthlyالهدف = 25000000;
+  const dailyالهدف = 833333;
+  const hourlyالهدف = annualالهدف / 365 / 24;
+  const corridorKm = 169;
+
+  const pointsByCode = Object.fromEntries(
+    NATIONAL_CARRIER_ROUTE.map((p) => [p.code, p])
+  );
+
+  const routeSegments = (segments || []).filter(
+    (seg) => pointsByCode[seg.from] && pointsByCode[seg.to]
+  );
+
+  const zoneStyles = {
+    sea: {
+      stroke: 'rgba(103,232,249,.88)',
+    },
+    aqaba: {
+      stroke: 'rgba(255,255,255,.86)',
+    },
+    maan: {
+      stroke: 'rgba(255,255,255,.86)',
+    },
+    amman: {
+      stroke: 'rgba(255,255,255,.94)',
+    },
+  };
+
+  const getPipeColors = (type) => {
+    switch (type) {
+      case 'burst':
+        return { body: '#ef4444', glow: 'url(#ncGlowRed)' };
+      case 'leak':
+        return { body: '#f59e0b', glow: 'url(#ncGlowAmber)' };
+      case 'theft':
+        return { body: '#a855f7', glow: 'url(#ncGlowPurple)' };
+      default:
+        return { body: '#e5e7eb', glow: 'url(#ncPipeShadow)' };
+    }
+  };
+
+  const labelOffsets = {
+    Intake: { dx: 10, dy: 26, anchor: 'start' },
+    BPS2: { dx: 12, dy: 18, anchor: 'start' },
+    BPS3: { dx: 12, dy: 18, anchor: 'start' },
+    RGT1: { dx: 12, dy: 18, anchor: 'start' },
+    BPS4: { dx: 12, dy: 18, anchor: 'start' },
+    RGT2: { dx: 12, dy: 18, anchor: 'start' },
+    BPT: { dx: 14, dy: -8, anchor: 'start' },
+    'PS ADC': { dx: 14, dy: 18, anchor: 'start' },
+    'AL MUNTAZAH': { dx: 16, dy: -8, anchor: 'start' },
+    'ABU ALANDA': { dx: 16, dy: -10, anchor: 'start' },
+  };
+
+  const renderNode = (point, activeType = null, isSelected = false) => {
+    const lc = activeType ? TYPE_CONFIG[activeType].color : '#ffffff';
+    const offs = labelOffsets[point.code] || {
+      dx: 12,
+      dy: -12,
+      anchor: 'start',
+    };
+
+    const nodeShape = () => {
+      if (point.kind === 'terminal-red') {
+        return (
+          <text
+            x={point.x}
+            y={point.y + 7}
+            textAnchor="middle"
+            fill="#ef4444"
+            fontSize="24"
+            fontWeight="900"
+            stroke="#ffffff"
+            strokeWidth="0.9"
+            paintOrder="stroke"
+          >
+            ★
+          </text>
+        );
+      }
+
+      if (point.kind === 'hub') {
+        return (
+          <text
+            x={point.x}
+            y={point.y + 7}
+            textAnchor="middle"
+            fill="#f8fafc"
+            fontSize="22"
+            fontWeight="900"
+            stroke="#111827"
+            strokeWidth="0.8"
+            paintOrder="stroke"
+          >
+            ★
+          </text>
+        );
+      }
+
+      if (
+        point.kind === 'pump' ||
+        point.kind === 'reg' ||
+        point.kind === 'tank'
+      ) {
+        return (
+          <rect
+            x={point.x - 8}
+            y={point.y - 8}
+            width="16"
+            height="16"
+            rx="2"
+            fill="#facc15"
+            stroke="#f8fafc"
+            strokeWidth="1.6"
+          />
+        );
+      }
+
+      return (
+        <circle
+          cx={point.x}
+          cy={point.y}
+          r="7"
+          fill="#38bdf8"
+          stroke="#f8fafc"
+          strokeWidth="1.6"
+        />
+      );
+    };
+
+    return (
+      <g key={point.code}>
+        {isSelected && (
+          <circle
+            cx={point.x}
+            cy={point.y}
+            r="18"
+            fill="none"
+            stroke={lc}
+            strokeWidth="1.8"
+            opacity="0.58"
+          />
+        )}
+
+        {nodeShape()}
+
+        <text
+          x={point.x + offs.dx}
+          y={point.y + offs.dy}
+          textAnchor={offs.anchor}
+          fill="#f8fafc"
+          fontSize="10.4"
+          fontWeight="900"
+          style={{ textShadow: '0 1px 4px rgba(0,0,0,.9)' }}
+        >
+          {point.label}
+        </text>
+
+        <text
+          x={point.x + offs.dx}
+          y={point.y + offs.dy + 12}
+          textAnchor={offs.anchor}
+          fill="#7dd3fc"
+          fontSize="8.2"
+          fontWeight="700"
+          style={{ textShadow: '0 1px 4px rgba(0,0,0,.9)' }}
+        >
+          {point.gov}
+        </text>
+      </g>
+    );
+  };
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      style={{ width: '100%', height: H, display: 'block' }}
+    >
+      <defs>
+        <pattern
+          id="ncGrid"
+          width="28"
+          height="28"
+          patternUnits="userSpaceOnUse"
+        >
+          <path
+            d="M 28 0 L 0 0 0 28"
+            fill="none"
+            stroke="rgba(56,189,248,.06)"
+            strokeWidth="1"
+          />
+        </pattern>
+
+        <linearGradient id="ncSeaGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="rgba(34,211,238,.80)" />
+          <stop offset="100%" stopColor="rgba(14,165,233,.22)" />
+        </linearGradient>
+
+        <linearGradient id="ncAqabaGrad" x1="0" y1="0" x2="0.9" y2="1">
+          <stop offset="0%" stopColor="rgba(6,182,212,.95)" />
+          <stop offset="100%" stopColor="rgba(8,145,178,.72)" />
+        </linearGradient>
+
+        <linearGradient id="ncMaanGrad" x1="0" y1="0" x2="0.9" y2="1">
+          <stop offset="0%" stopColor="rgba(29,78,216,.74)" />
+          <stop offset="100%" stopColor="rgba(21,94,117,.92)" />
+        </linearGradient>
+
+        <linearGradient id="ncAmmanGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="rgba(59,130,246,.98)" />
+          <stop offset="100%" stopColor="rgba(37,99,235,.84)" />
+        </linearGradient>
+
+        <linearGradient id="ncMetal" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#f8fafc" />
+          <stop offset="26%" stopColor="#e5e7eb" />
+          <stop offset="56%" stopColor="#cbd5e1" />
+          <stop offset="100%" stopColor="#94a3b8" />
+        </linearGradient>
+
+        <filter id="ncGlowRed">
+          <feGaussianBlur stdDeviation="4" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+
+        <filter id="ncGlowAmber">
+          <feGaussianBlur stdDeviation="4" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+
+        <filter id="ncGlowPurple">
+          <feGaussianBlur stdDeviation="4" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+
+        <filter id="ncGlowCyan">
+          <feGaussianBlur stdDeviation="3.5" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+
+        <filter id="ncPipeShadow" x="-20%" y="-80%" width="150%" height="260%">
+          <feDropShadow
+            dx="0"
+            dy="2.2"
+            stdDeviation="2.4"
+            floodColor="#000000"
+            floodOpacity="0.45"
+          />
+        </filter>
+      </defs>
+
+      <rect x="0" y="0" width={W} height={H} fill="rgba(6,12,24,.18)" />
+      <rect
+        x={mapX}
+        y={mapY}
+        width="584"
+        height="492"
+        rx="18"
+        fill="rgba(3,15,32,.34)"
+        stroke="rgba(56,189,248,.08)"
+      />
+      <rect
+        x={mapX}
+        y={mapY}
+        width="584"
+        height="492"
+        rx="18"
+        fill="url(#ncGrid)"
+      />
+
+      <text x="750" y="25" fill="#e2e8f0" fontSize="18" fontWeight="800">
+        مشروع الناقل الوطني الأردني
+      </text>
+      <text x="590" y="50" fill="#38bdf8" fontSize="11" fontWeight="700">
+        البحر الأحمر → العقبة → معان → عمّان → AL MUNTAZAH / ABU ALANDA
+      </text>
+
+      <text
+        x={W - 30}
+        y="100"
+        textAnchor="end"
+        fill="#f8fafc"
+        fontSize="11"
+        fontFamily="monospace"
+        fontWeight="700"
+      >
+        التدفق الحالي ≈{' '}
+        {(totalOutflowM3PerHr || 0).toLocaleString(undefined, {
+          maximumFractionDigits: 0,
+        })}{' '}
+        م³/ساعة
+      </text>
+
+      <text
+        x={W - 30}
+        y="78"
+        textAnchor="end"
+        fill="#86efac"
+        fontSize="10.5"
+        fontWeight="700"
+      >
+        تصميم سنوي: 300,000,000 م³
+      </text>
+
+      <g transform="translate(58 56)">
+        {/* البحر الأحمر */}
+        {/* البحر الأحمر - أسفل الخريطة */}
+        <path
+          d="M 54 430 
+     L 84 492  
+     L 99 414 
+     L 102 388 
+     L 99  Z"
+          fill="url(#ncSeaGrad)"
+          stroke={zoneStyles.sea.stroke}
+          strokeWidth="1.8"
+        />
+        <text
+          x="104"
+          y="448"
+          textAnchor="middle"
+          fill="#67e8f9"
+          fontSize="13"
+          fontWeight="900"
+          style={{ textShadow: '0 1px 4px rgba(0,0,0,.95)' }}
+        >
+          البحر الأحمر
+        </text>
+        {/* العقبة - شكل قريب من حرف L */}
+        <path
+          d="M 118 492
+     L 200 444
+     L 200 404
+     L 200 404
+     L 200 326
+     L 151 326
+     L 108 372
+     L 100 430 Z"
+          fill="url(#ncAqabaGrad)"
+          stroke={zoneStyles.aqaba.stroke}
+          strokeWidth="2"
+        />
+        <text
+          x="176"
+          y="428"
+          textAnchor="middle"
+          fill="#f8fafc"
+          fontSize="18"
+          fontWeight="900"
+          style={{ textShadow: '0 1px 4px rgba(0,0,0,.95)' }}
+        >
+          العقبة
+        </text>
+        {/* معان - داخلة في جوف العقبة بصريًا وممتدة للأعلى */}
+        <path
+          d="M 202 326
+     L 200 500
+     L 300 500
+     L 530 380
+     L 490 248
+     L 574 140
+     L 468 170
+     L 430 118
+     L 362 44
+     L 304 44
+     L 300 44 Z"
+          fill="url(#ncMaanGrad)"
+          stroke={zoneStyles.maan.stroke}
+          strokeWidth="2.1"
+        />
+        <text
+          x="430"
+          y="350"
+          textAnchor="middle"
+          fill="#f8fafc"
+          fontSize="22"
+          fontWeight="900"
+          style={{ textShadow: '0 1px 4px rgba(0,0,0,.95)' }}
+        >
+          معان
+        </text>
+        {/* عمّان - متصلة من الجزء العلوي لمعان فقط */}
+        <path
+          d="M 430 118
+     L 468 170
+     L 560 142
+     L 626 96
+     L 604 4
+     L 528 5
+     L 360 45 Z"
+          fill="url(#ncAmmanGrad)"
+          stroke={zoneStyles.amman.stroke}
+          strokeWidth="2.2"
+        />
+        <text
+          x="540"
+          y="112"
+          textAnchor="middle"
+          fill="#f8fafc"
+          fontSize="20"
+          fontWeight="900"
+          style={{ textShadow: '0 1px 4px rgba(0,0,0,.95)' }}
+        >
+          عمّان
+        </text>
+        <text
+          x="144"
+          y="462"
+          fill="rgba(226,232,240,.85)"
+          fontSize="10"
+          textAnchor="middle"
+        ></text>
+        <text
+          x="532"
+          y="92"
+          fill="rgba(226,232,240,.82)"
+          fontSize="9"
+          textAnchor="middle"
+        >
+          أبو علندا / المنتزه / PS ADC
+        </text>
+        {routeSegments.map((seg) => {
+          const p1 = pointsByCode[seg.from];
+          const p2 = pointsByCode[seg.to];
+          if (!p1 || !p2) return null;
+
+          const isAnomaly = ['burst', 'leak', 'theft'].includes(seg.predType);
+          const showFaultMarker = Boolean(
+            seg.alert || seg.faultHere === 1 || isAnomaly
+          );
+          const colors = getPipeColors(isAnomaly ? seg.predType : 'normal');
+          const isSel = selectedSeg?.id === seg.id;
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+
+          return (
+            <g
+              key={seg.id}
+              style={{ cursor: 'pointer' }}
+              onClick={() => onSegClick(seg)}
+            >
+              <line
+                x1={p1.x}
+                y1={p1.y + 3}
+                x2={p2.x}
+                y2={p2.y + 3}
+                stroke="rgba(0,0,0,.48)"
+                strokeWidth="12"
+                strokeLinecap="round"
+              />
+
+              <line
+                x1={p1.x}
+                y1={p1.y}
+                x2={p2.x}
+                y2={p2.y}
+                stroke={isAnomaly ? colors.body : 'url(#ncMetal)'}
+                strokeWidth={isAnomaly ? 9.4 : 8.8}
+                strokeLinecap="round"
+                filter={colors.glow}
+              />
+
+              <line
+                x1={p1.x}
+                y1={p1.y - 1.2}
+                x2={p2.x}
+                y2={p2.y - 1.2}
+                stroke="rgba(255,255,255,.72)"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                opacity="0.95"
+              />
+
+              {pumping && (
+                <line
+                  x1={p1.x}
+                  y1={p1.y}
+                  x2={p2.x}
+                  y2={p2.y}
+                  stroke="#22d3ee"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeDasharray="8 6"
+                  filter="url(#ncGlowCyan)"
+                >
+                  <animate
+                    attributeName="stroke-dashoffset"
+                    from="0"
+                    to="-22"
+                    dur="0.7s"
+                    repeatCount="indefinite"
+                  />
+                </line>
+              )}
+
+              {showFaultMarker && (
+                <g>
+                  <circle
+                    cx={midX}
+                    cy={midY}
+                    r="24"
+                    fill="none"
+                    stroke={TYPE_CONFIG[seg.predType].color}
+                    strokeWidth="1.6"
+                    opacity="0.48"
+                  />
+                  <line
+                    x1={midX}
+                    y1={midY - 30}
+                    x2={midX}
+                    y2={midY - 12}
+                    stroke={TYPE_CONFIG[seg.predType].color}
+                    strokeWidth="1.4"
+                    strokeDasharray="3 3"
+                    opacity="0.85"
+                  />
+                  <circle
+                    cx={midX}
+                    cy={midY - 40}
+                    r="11"
+                    fill="#08111f"
+                    stroke={TYPE_CONFIG[seg.predType].color}
+                    strokeWidth="2"
+                    filter={colors.glow}
+                  />
+                  <text
+                    x={midX}
+                    y={midY - 35}
+                    textAnchor="middle"
+                    fill={TYPE_CONFIG[seg.predType].color}
+                    fontSize="15"
+                    fontWeight="900"
+                  >
+                    !
+                  </text>
+                </g>
+              )}
+
+              {isSel && (
+                <circle
+                  cx={p2.x}
+                  cy={p2.y}
+                  r="21"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="1.8"
+                  opacity="0.6"
+                />
+              )}
+
+              <text
+                x={midX + 12}
+                y={midY - 10}
+                fill={isAnomaly ? TYPE_CONFIG[seg.predType].color : '#7dd3fc'}
+                fontSize="8.8"
+                fontFamily="monospace"
+                fontWeight="700"
+              >
+                {seg.flowLoss.toFixed(1)}%
+              </text>
+            </g>
+          );
+        })}
+        {NATIONAL_CARRIER_ROUTE.map((point) => {
+          const related = routeSegments.find(
+            (seg) => seg.to === point.code || seg.from === point.code
+          );
+
+          return renderNode(
+            point,
+            related && related.alert ? related.predType : null,
+            selectedSeg?.to === point.code || selectedSeg?.from === point.code
+          );
+        })}
+      </g>
+
+      <g transform="translate(688 104)">
+        <rect
+          x="1"
+          y="0"
+          width="266"
+          height="150"
+          rx="16"
+          fill="rgba(10,22,40,.86)"
+          stroke="rgba(56,189,248,.16)"
+        />
+        <text x="150" y="24" fill="#e2e8f0" fontSize="13" fontWeight="800">
+          : ملخص الناقل الوطني
+        </text>
+
+        {[
+          ['التزويد السنوي', '300,000,000 م³ / year', '#22d3ee'],
+          ['التزويد الشهري', '25,000,000 م³ / month', '#f8fafc'],
+          ['التزويد اليومي', '833,333 م³ / day', '#93c5fd'],
+          [
+            'التدفق التصميمي',
+            `${hourlyالهدف.toLocaleString(undefined, {
+              maximumFractionDigits: 0,
+            })} م³/ساعة`,
+            '#86efac',
+          ],
+          ['طول المسار', `${'450'} km`, '#fbbf24'],
+        ].map(([l, v, c], i) => (
+          <g key={l} transform={`translate(18 ${50 + i * 16})`}>
+            <text x="150" y="0" fill="#64748b" fontSize="10">
+              {l}
+            </text>
+            <text
+              x="8"
+              y="0"
+              fill={c}
+              fontSize="10.6"
+              fontFamily="monospace"
+              fontWeight="700"
+            >
+              {v}
+            </text>
+          </g>
+        ))}
+      </g>
+
+      <g transform="translate(640 278)">
+        <rect
+          x="0"
+          y="0"
+          width="310"
+          height="178"
+          rx="16"
+          fill="rgba(8,18,34,.82)"
+          stroke="rgba(56,189,248,.14)"
+        />
+        <text x="220" y="24" fill="#e2e8f0" fontSize="13" fontWeight="800">
+          : المسار التشغيلي
+        </text>
+        <text x="130" y="44" fill="#FFFF" fontSize="10">
+          البحر الأحمر → العقبة → معان → عمّان
+        </text>
+
+        {[
+          'المأخذ من البحر الأحمر ضمن حصة الأردن.',
+          'الدخول إلى العقبة ثم العبور داخل الممر الرئيسي.',
+          'المرور عبر معان خلال محطات BPS3 و RGT1 و BPS4 و RGT2 و BPT.',
+          'الوصول إلى PS ADC داخل عمّان.',
+          'التفرع النهائي إلى AL MUNTAZAH و ABU ALANDA.',
+          `عدد المقاطع المتتابعة: ${routeSegments.length || 9}`,
+        ].map((line, i) => (
+          <text
+            key={i}
+            x="5"
+            y={68 + i * 18}
+            fill={i < 5 ? '#cbd5e1' : '#22d3ee'}
+            fontSize="10.2"
+          >
+            • {line}
+          </text>
+        ))}
+      </g>
+    </svg>
+  );
+}
+
+function PipeNetworkMap({
+  govKey,
+  segments,
+  onSegClick,
+  selectedSeg,
+  pumping,
+  branchInflows,
+  totalOutflowM3PerHr,
+}) {
+  const gov = NETWORK[govKey];
+
+  if (govKey === NATIONAL_CARRIER_KEY) {
+    return (
+      <NationalCarrierMap
+        segments={segments}
+        onSegClick={onSegClick}
+        selectedSeg={selectedSeg}
+        pumping={pumping}
+        totalOutflowM3PerHr={totalOutflowM3PerHr}
+      />
+    );
+  }
+
+  const branches = Object.entries(gov.branches);
+  const H = 560,
+    W = 940;
+  const MAIN_NODE_X = 116,
+    MANIFOLD_X = 212,
+    LABEL_X = 310,
+    ENTRY_X = 356,
+    SEG_START = 402,
+    SEG_END = W - 42,
+    NODE_R = 18,
+    ROW_H = H / (branches.length + 1);
+  const [pulse, setPulse] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setPulse((p) => (p + 1) % 100), 80);
+    return () => clearInterval(id);
+  }, []);
+
+  const segsByBranch = useMemo(() => {
+    const map = {};
+    segments.forEach((seg) => {
+      map[seg.branch] = map[seg.branch] || [];
+      map[seg.branch].push(seg);
+    });
+    return map;
+  }, [segments]);
+
+  const mainY = H / 2;
+  const topBranchY = ROW_H;
+  const bottomBranchY = ROW_H * branches.length;
+  const pulseScale = 1 + Math.sin(pulse * 0.063) * 0.14;
+  const branchM3 = (bn) => ((branchInflows?.[bn] || 0) * 0.06).toFixed(1);
+
+  const getPipeTheme = (type = 'normal') => {
+    switch (type) {
+      case 'supply':
+        return {
+          body: 'url(#pipeGradSupply)',
+          shadow: 'rgba(8,47,73,.48)',
+          shade: 'rgba(8,47,73,.22)',
+          highlight: 'rgba(224,242,254,.75)',
+          filter: pumping ? 'url(#glow-cyan)' : 'url(#pipeShadowSoft)',
+        };
+      case 'burst':
+        return {
+          body: 'url(#pipeGradانفجار)',
+          shadow: 'rgba(127,29,29,.52)',
+          shade: 'rgba(127,29,29,.18)',
+          highlight: 'rgba(254,226,226,.68)',
+          filter: 'url(#glow-red)',
+        };
+      case 'leak':
+        return {
+          body: 'url(#pipeGradتسرب)',
+          shadow: 'rgba(120,53,15,.48)',
+          shade: 'rgba(120,53,15,.18)',
+          highlight: 'rgba(255,247,237,.66)',
+          filter: 'url(#glow-amber)',
+        };
+      case 'theft':
+        return {
+          body: 'url(#pipeGradسرقة)',
+          shadow: 'rgba(88,28,135,.48)',
+          shade: 'rgba(88,28,135,.18)',
+          highlight: 'rgba(245,243,255,.66)',
+          filter: 'url(#glow-purple)',
+        };
+      default:
+        return {
+          body: 'url(#pipeGradMetal)',
+          shadow: 'rgba(2,6,23,.66)',
+          shade: 'rgba(15,23,42,.28)',
+          highlight: 'rgba(255,255,255,.88)',
+          filter: 'url(#pipeShadowSoft)',
+        };
+    }
+  };
+
+  const renderPipeLine = ({
+    x1,
+    y1,
+    x2,
+    y2,
+    type = 'normal',
+    width = 8.8,
+    animate = false,
+    animateColor = '#22d3ee',
+    animateFilter = 'url(#glow-cyan)',
+    opacity = 1,
+  }) => {
+    const theme = getPipeTheme(type);
+    return (
+      <g opacity={opacity}>
+        <line
+          x1={x1}
+          y1={y1 + 2.4}
+          x2={x2}
+          y2={y2 + 2.4}
+          stroke={theme.shadow}
+          strokeWidth={width + 2.6}
+          strokeLinecap="round"
+          opacity="0.92"
+        />
+        <line
+          x1={x1}
+          y1={y1}
+          x2={x2}
+          y2={y2}
+          stroke="#0f172a"
+          strokeWidth={width + 1.6}
+          strokeLinecap="round"
+          opacity="0.55"
+        />
+        <line
+          x1={x1}
+          y1={y1}
+          x2={x2}
+          y2={y2}
+          stroke={theme.body}
+          strokeWidth={width}
+          strokeLinecap="round"
+          filter={theme.filter}
+        />
+        <line
+          x1={x1}
+          y1={y1 + Math.max(0.9, width * 0.16)}
+          x2={x2}
+          y2={y2 + Math.max(0.9, width * 0.16)}
+          stroke={theme.shade}
+          strokeWidth={Math.max(1.4, width * 0.3)}
+          strokeLinecap="round"
+          opacity="0.95"
+        />
+        <line
+          x1={x1}
+          y1={y1 - Math.max(1.1, width * 0.18)}
+          x2={x2}
+          y2={y2 - Math.max(1.1, width * 0.18)}
+          stroke={theme.highlight}
+          strokeWidth={Math.max(1.6, width * 0.22)}
+          strokeLinecap="round"
+          opacity="0.96"
+        />
+        {animate && (
+          <line
+            x1={x1}
+            y1={y1}
+            x2={x2}
+            y2={y2}
+            stroke={animateColor}
+            strokeWidth={Math.max(1.6, width * 0.18)}
+            strokeLinecap="round"
+            strokeDasharray="7 6"
+            filter={animateFilter}
+            opacity="0.95"
+          >
+            <animate
+              attributeName="stroke-dashoffset"
+              from="0"
+              to="-20"
+              dur="0.6s"
+              repeatCount="indefinite"
+            />
+          </line>
+        )}
+      </g>
+    );
+  };
+
+  const getNodeX = (index, count) => {
+    if (count <= 1) return SEG_START;
+    return SEG_START + index * ((SEG_END - SEG_START) / (count - 1));
+  };
+
+  const formatNodeLabel = (name = '') => {
+    const base = name.split('-').filter(Boolean).pop() || '';
+    if (base.length <= 8) return base;
+    return `${base.slice(0, 7)}…`;
+  };
+
+  const getNodeLabelWidth = (label = '') =>
+    Math.max(42, Math.min(74, label.length * 7 + 16));
+
+  const renderNodeLabel = ({ x, y, label, color, active = false }) => {
+    const width = getNodeLabelWidth(label);
+    return (
+      <g>
+        <rect
+          x={x - width / 2}
+          y={y - 10}
+          width={width}
+          height="20"
+          rx="10"
+          fill={active ? 'rgba(15,23,42,.96)' : 'rgba(8,17,31,.92)'}
+          stroke={active ? color : 'rgba(148,163,184,.28)'}
+          strokeWidth={active ? '1.4' : '1'}
+        />
+        <text
+          x={x}
+          y={y + 4}
+          textAnchor="middle"
+          fill={active ? '#ffffff' : '#e2e8f0'}
+          fontSize="8.3"
+          fontWeight="800"
+        >
+          {label}
+        </text>
+      </g>
+    );
+  };
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      style={{ width: '100%', height: H, display: 'block' }}
+    >
+      <defs>
+        <filter id="glow-red">
+          <feGaussianBlur stdDeviation="4" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        <filter id="glow-amber">
+          <feGaussianBlur stdDeviation="4" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        <filter id="glow-cyan">
+          <feGaussianBlur stdDeviation="4" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        <filter id="glow-purple">
+          <feGaussianBlur stdDeviation="4" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        <filter
+          id="pipeShadowSoft"
+          x="-20%"
+          y="-80%"
+          width="150%"
+          height="260%"
+        >
+          <feDropShadow
+            dx="0"
+            dy="2.2"
+            stdDeviation="2.2"
+            floodColor="#000000"
+            floodOpacity="0.40"
+          />
+        </filter>
+        <linearGradient id="pipeGradMetal" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#c0c0c0" />
+          <stop offset="20%" stopColor="#c0c0c0" />
+          <stop offset="46%" stopColor="#c0c0c0" />
+          <stop offset="72%" stopColor="#c0c0c0" />
+          <stop offset="100%" stopColor="#c0c0c0" />
+        </linearGradient>
+        <linearGradient id="pipeGradSupply" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#dbeafe" />
+          <stop offset="24%" stopColor="#7dd3fc" />
+          <stop offset="58%" stopColor="#38bdf8" />
+          <stop offset="100%" stopColor="#0c4a6e" />
+        </linearGradient>
+        <linearGradient id="pipeGradانفجار" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fee2e2" />
+          <stop offset="24%" stopColor="#fca5a5" />
+          <stop offset="58%" stopColor="#ef4444" />
+          <stop offset="100%" stopColor="#991b1b" />
+        </linearGradient>
+        <linearGradient id="pipeGradتسرب" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fffbeb" />
+          <stop offset="24%" stopColor="#fde68a" />
+          <stop offset="58%" stopColor="#f59e0b" />
+          <stop offset="100%" stopColor="#92400e" />
+        </linearGradient>
+        <linearGradient id="pipeGradسرقة" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#f5f3ff" />
+          <stop offset="24%" stopColor="#ddd6fe" />
+          <stop offset="58%" stopColor="#a855f7" />
+          <stop offset="100%" stopColor="#6b21a8" />
+        </linearGradient>
+      </defs>
+
+      <rect
+        x="8"
+        y={mainY - 32}
+        width="66"
+        height="64"
+        rx="9"
+        fill={pumping ? '#0c4a6e' : '#0f172a'}
+        stroke={pumping ? '#22d3ee' : '#38bdf8'}
+        strokeWidth={pumping ? '2.5' : '1.5'}
+        filter={pumping ? 'url(#glow-cyan)' : undefined}
+      />
+      <text
+        x="41"
+        y={mainY - 10}
+        textAnchor="middle"
+        fill="#38bdf8"
+        fontSize="10"
+        fontWeight="700"
+      >
+        مصدر
+      </text>
+      <text
+        x="41"
+        y={mainY + 10}
+        textAnchor="middle"
+        fill="#67e8f9"
+        fontSize="10"
+        fontWeight="700"
+      >
+        المياه
+      </text>
+      <text
+        x="41"
+        y={mainY - 42}
+        textAnchor="middle"
+        fill="#22d3ee"
+        fontSize="9"
+        fontWeight="700"
+        fontFamily="monospace"
+      >
+        {totalOutflowM3PerHr?.toFixed?.(0) ?? '0'} م³/ساعة
+      </text>
+
+      {renderPipeLine({
+        x1: 74,
+        y1: mainY,
+        x2: MAIN_NODE_X - NODE_R,
+        y2: mainY,
+        type: 'supply',
+        width: 10.5,
+        animate: pumping,
+      })}
+
+      {renderPipeLine({
+        x1: MAIN_NODE_X + NODE_R,
+        y1: mainY,
+        x2: MANIFOLD_X,
+        y2: mainY,
+        type: 'supply',
+        width: 9.4,
+        animate: pumping,
+      })}
+
+      {renderPipeLine({
+        x1: MANIFOLD_X,
+        y1: topBranchY,
+        x2: MANIFOLD_X,
+        y2: bottomBranchY,
+        type: 'normal',
+        width: 7.6,
+        animate: pumping,
+        animateColor: 'rgba(56,189,248,.85)',
+      })}
+
+      <circle
+        cx={MAIN_NODE_X}
+        cy={mainY}
+        r={NODE_R + 2}
+        fill="#38bdf8"
+        fillOpacity="0.12"
+        stroke="#38bdf8"
+        strokeWidth="2"
+      />
+      <circle
+        cx={MAIN_NODE_X}
+        cy={mainY}
+        r={NODE_R}
+        fill="#0f172a"
+        stroke={pumping ? '#22d3ee' : '#38bdf8'}
+        strokeWidth="2.2"
+      />
+      <text
+        x={MAIN_NODE_X}
+        y={mainY + 4}
+        textAnchor="middle"
+        fill="#38bdf8"
+        fontSize="9"
+        fontWeight="800"
+      >
+        رئيسي
+      </text>
+      {pumping && (
+        <circle
+          cx={MAIN_NODE_X}
+          cy={mainY}
+          r={NODE_R + 8}
+          fill="none"
+          stroke="#22d3ee"
+          strokeWidth="1.5"
+          opacity="0.7"
+        >
+          <animate
+            attributeName="r"
+            values={`${NODE_R + 6};${NODE_R + 16};${NODE_R + 6}`}
+            dur="0.9s"
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            values="0.8;0;0.8"
+            dur="0.9s"
+            repeatCount="indefinite"
+          />
+        </circle>
+      )}
+
+      {branches.map(([bname, bcfg], bi) => {
+        const brY = ROW_H * (bi + 1);
+        const brSegs = segsByBranch[bname] || [];
+        const segCount = brSegs.length;
+
+        return (
+          <g key={bname}>
+            {renderPipeLine({
+              x1: MANIFOLD_X,
+              y1: brY,
+              x2: ENTRY_X,
+              y2: brY,
+              type: 'normal',
+              width: 6.8,
+              animate: pumping,
+              animateColor: `${bcfg.color}cc`,
+            })}
+
+            <text
+              x={LABEL_X}
+              y={brY - 10}
+              textAnchor="end"
+              fill="#e2e8f0"
+              fontSize="12"
+              fontWeight="700"
+            >
+              {getBranchLabelAr(bname)}
+            </text>
+            <text
+              x={LABEL_X}
+              y={brY + 8}
+              textAnchor="end"
+              fill="#93c5fd"
+              fontSize="9"
+              fontFamily="monospace"
+              fontWeight="700"
+            >
+              {branchM3(bname)} م³/ساعة
+            </text>
+
+            {brSegs.map((seg, si) => {
+              const endX = getNodeX(si, segCount);
+              const startX = si === 0 ? ENTRY_X : getNodeX(si - 1, segCount);
+              const isAnomalyType = ['burst', 'leak', 'theft'].includes(
+                seg.predType
+              );
+              const showFaultMarker = Boolean(
+                seg.alert || seg.faultHere === 1 || isAnomalyType
+              );
+              const isAl = showFaultMarker;
+              const tColor = TYPE_CONFIG[seg.predType]?.color || '#22c55e';
+              const isSel = selectedSeg?.id === seg.id;
+              const pipeType = isAnomalyType ? seg.predType : 'normal';
+              const pipeWidth = isAl ? 9.8 : 8.6;
+              const midX = (startX + endX) / 2;
+              const nodeName = formatNodeLabel(seg.to || '');
+              const labelY = brY - NODE_R - 14;
+              const labelTopY = labelY - 10;
+              const markerShiftX = si === 0 ? 30 : si === 1 ? 18 : 0;
+              const markerDropY = si <= 1 ? 8 : 0;
+              const markerX = midX - markerShiftX;
+              const markerBadgeY = labelTopY - 16 + markerDropY;
+              const markerLineY1 = markerBadgeY + 12;
+              const markerLineY2 =
+                labelTopY - 4 + Math.min(markerDropY * 0.35, 4);
+
+              return (
+                <g
+                  key={seg.id}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => onSegClick(seg)}
+                >
+                  {renderPipeLine({
+                    x1: startX,
+                    y1: brY,
+                    x2: endX,
+                    y2: brY,
+                    type: pipeType,
+                    width: pipeWidth,
+                  })}
+
+                  {showFaultMarker && (
+                    <g>
+                      <circle
+                        cx={markerX}
+                        cy={brY}
+                        r={22 + pulseScale * 4}
+                        fill="none"
+                        stroke={tColor}
+                        strokeWidth="1.7"
+                        opacity="0.45"
+                      />
+                      <line
+                        x1={markerX}
+                        y1={markerLineY1}
+                        x2={markerX}
+                        y2={markerLineY2}
+                        stroke={tColor}
+                        strokeWidth="1.4"
+                        strokeOpacity="0.8"
+                        strokeDasharray="3 3"
+                      />
+                      <circle
+                        cx={markerX}
+                        cy={markerBadgeY}
+                        r="12"
+                        fill="#08111f"
+                        stroke={tColor}
+                        strokeWidth="2"
+                        filter={
+                          seg.predType === 'burst'
+                            ? 'url(#glow-red)'
+                            : seg.predType === 'leak'
+                            ? 'url(#glow-amber)'
+                            : seg.predType === 'theft'
+                            ? 'url(#glow-purple)'
+                            : 'url(#glow-red)'
+                        }
+                      />
+                      <text
+                        x={markerX}
+                        y={markerBadgeY + 5}
+                        textAnchor="middle"
+                        fill={tColor}
+                        fontSize="16"
+                        fontWeight="900"
+                      >
+                        !
+                      </text>
+                    </g>
+                  )}
+
+                  <circle
+                    cx={endX}
+                    cy={brY}
+                    r={NODE_R}
+                    fill={isAl ? `${tColor}20` : '#0d1830'}
+                    stroke={isSel ? '#ffffff' : isAl ? tColor : bcfg.color}
+                    strokeWidth={isSel ? 2.6 : isAl ? 2.1 : 1.8}
+                    filter={
+                      isAl
+                        ? seg.predType === 'burst'
+                          ? 'url(#glow-red)'
+                          : seg.predType === 'leak'
+                          ? 'url(#glow-amber)'
+                          : seg.predType === 'theft'
+                          ? 'url(#glow-purple)'
+                          : 'url(#glow-red)'
+                        : undefined
+                    }
+                  />
+                  <circle
+                    cx={endX - 4}
+                    cy={brY - 4}
+                    r="4"
+                    fill="rgba(255,255,255,.14)"
+                  />
+                  {renderNodeLabel({
+                    x: endX,
+                    y: labelY,
+                    label: nodeName,
+                    color: isAl ? tColor : bcfg.color,
+                    active: isAl || isSel,
+                  })}
+                  <text
+                    x={endX}
+                    y={brY + NODE_R + 16}
+                    textAnchor="middle"
+                    fill={isAl ? tColor : '#64748b'}
+                    fontSize="10"
+                    fontWeight="700"
+                  >
+                    {seg.flowLoss.toFixed(1)}%
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NRW GAUGE
+// ══════════════════════════════════════════════════════════════════════════════
+function NRWGauge({ nrw, target }) {
+  const pct = Math.round(nrw * 100);
+  const tgt = Math.round(target * 100);
+  const data = [
+    {
+      name: 'NRW',
+      value: pct,
+      fill: nrw > 0.5 ? '#ef4444' : nrw > 0.4 ? '#f59e0b' : '#22c55e',
+    },
+    { name: 'Gap', value: 100 - pct, fill: '#1e293b' },
+  ];
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 2,
+      }}
+    >
+      <div style={{ position: 'relative', width: 130, height: 74 }}>
+        <ResponsiveContainer width={130} height={74}>
+          <RadialBarChart
+            cx={65}
+            cy={64}
+            innerRadius={40}
+            outerRadius={60}
+            startAngle={180}
+            endAngle={0}
+            data={data}
+          >
+            <RadialBar
+              dataKey="value"
+              background={{ fill: '#1e293b' }}
+              cornerRadius={4}
+            />
+          </RadialBarChart>
+        </ResponsiveContainer>
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            textAlign: 'center',
+          }}
+        >
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 700,
+              fontFamily: 'monospace',
+              color: pct > 50 ? '#ef4444' : pct > 40 ? '#f59e0b' : '#22c55e',
+            }}
+          >
+            {pct}%
+          </div>
+        </div>
+      </div>
+      <div style={{ fontSize: 10, color: '#64748b' }}>
+        Target:{' '}
+        <span style={{ color: '#22c55e', fontWeight: 600 }}>{tgt}%</span>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// OPERATOR TAB PANELS — Arabic internal tabs, approved actions, UX research, AI explanation
+// ══════════════════════════════════════════════════════════════════════════════
+const ACTION_SUGGESTIONS = {
+  normal: [
+    {
+      title: 'استمرار المراقبة التشغيلية',
+      detail:
+        'لا يوجد خلل نشط؛ يتم الاكتفاء بتحديث القراءات ومراقبة الانحرافات القادمة.',
+      priority: 'منخفضة',
+    },
+    {
+      title: 'توثيق دورة القياس الحالية',
+      detail: 'حفظ حالة الشبكة الطبيعية كمرجع للمقارنة مع أي تغير لاحق.',
+      priority: 'منخفضة',
+    },
+  ],
+  leak: [
+    {
+      title: 'إرسال فريق صيانة للفحص الميداني',
+      detail:
+        'توجيه الفريق إلى المقطع المحدد مع أولوية متوسطة قبل تحول التسرب إلى عطل أكبر.',
+      priority: 'متوسطة',
+    },
+    {
+      title: 'تخفيض الضغط بنسبة 10–15% مؤقتاً',
+      detail:
+        'تقليل الفاقد لحين وصول الفريق مع التأكد من عدم التأثير على التزويد الأساسي.',
+      priority: 'متوسطة',
+    },
+    {
+      title: 'تشغيل فحص صوتي موضعي',
+      detail:
+        'استخدام حساس التسرب الصوتي لتأكيد النقطة الأدق قبل الحفر أو الإغلاق.',
+      priority: 'متوسطة',
+    },
+  ],
+  burst: [
+    {
+      title: 'عزل المقطع المتأثر فوراً',
+      detail: 'إغلاق الصمام الذكي أو المحبس الأقرب لتقليل الفاقد وحصر الضرر.',
+      priority: 'حرجة',
+    },
+    {
+      title: 'فتح بلاغ صيانة طارئ',
+      detail:
+        'إرسال فريق إصلاح مع إحداثيات المقطع وقراءات التدفق والضغط الداعمة للقرار.',
+      priority: 'حرجة',
+    },
+    {
+      title: 'إعادة توزيع التزويد مؤقتاً',
+      detail:
+        'تحويل جزء من التدفق إلى مسار بديل لتقليل أثر الانقطاع على المشتركين.',
+      priority: 'مرتفعة',
+    },
+  ],
+  theft: [
+    {
+      title: 'فتح مهمة تحقق ميداني',
+      detail:
+        'فحص الوصلات غير المشروعة حول المقطع المحدد دون قطع الخدمة مباشرة.',
+      priority: 'تحقق',
+    },
+    {
+      title: 'مقارنة آخر 72 ساعة مع سجلات العدادات',
+      detail:
+        'ربط نمط الفاقد مع قراءات الاستهلاك للتأكد من وجود استخدام غير مشروع.',
+      priority: 'تحقق',
+    },
+    {
+      title: 'توثيق الحالة كاشتباه سرقة',
+      detail:
+        'حفظ القراءات والموقع والوقت كمرجع للجهة المختصة قبل الإجراء القانوني.',
+      priority: 'تحقق',
+    },
+  ],
+};
+
+function getTypeColor(type) {
+  return TYPE_CONFIG[type]?.color || '#22c55e';
+}
+
+function getRiskLabel(type) {
+  if (type === 'burst') return 'حرج';
+  if (type === 'leak') return 'مرتفع';
+  if (type === 'theft') return 'تحقق';
+  return 'طبيعي';
+}
+
+function getTypeLabelAr(type) {
+  if (type === 'burst') return 'انفجار';
+  if (type === 'leak') return 'تسرب';
+  if (type === 'theft') return 'سرقة';
+  return 'طبيعي';
+}
+
+function SmallPill({ children, color = '#38bdf8', filled = false }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '5px 9px',
+        borderRadius: 999,
+        border: `1px solid ${color}66`,
+        background: filled ? `${color}22` : 'rgba(2,6,23,.28)',
+        color,
+        fontSize: 10,
+        fontWeight: 800,
+        letterSpacing: 0.35,
+        fontFamily: "'IBM Plex Mono','Tajawal',monospace",
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SectionCard({ children, title, icon, right, style = {} }) {
+  return (
+    <div
+      style={{
+        background:
+          'linear-gradient(180deg,rgba(15,23,42,.92),rgba(8,15,30,.94))',
+        border: '1px solid rgba(56,189,248,.12)',
+        borderRadius: 16,
+        boxShadow: '0 18px 44px rgba(0,0,0,.18)',
+        overflow: 'hidden',
+        ...style,
+      }}
+    >
+      {title && (
+        <div
+          style={{
+            padding: '14px 16px',
+            borderBottom: '1px solid rgba(56,189,248,.08)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            {icon}
+            <div style={{ fontSize: 13, fontWeight: 900, color: '#f8fafc' }}>
+              {title}
+            </div>
+          </div>
+          {right}
+        </div>
+      )}
+      <div style={{ padding: 16 }}>{children}</div>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value, color = '#e2e8f0', sub }) {
+  return (
+    <div
+      style={{
+        border: '1px solid rgba(148,163,184,.13)',
+        background: 'rgba(2,6,23,.28)',
+        borderRadius: 12,
+        padding: '12px 13px',
+      }}
+    >
+      <div
+        style={{
+          color: '#CBD5E1',
+          fontSize: 10,
+          fontFamily: "'IBM Plex Mono','Tajawal',monospace",
+          fontWeight: 800,
+          letterSpacing: 0.5,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          color,
+          fontSize: 19,
+          fontFamily: 'monospace',
+          fontWeight: 950,
+          marginTop: 5,
+        }}
+      >
+        {value}
+      </div>
+      {sub && (
+        <div style={{ color: '#64748b', fontSize: 10, marginTop: 4 }}>
+          {sub}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProgressBar({ value, color = '#38bdf8', height = 8 }) {
+  const pct = Math.max(0, Math.min(100, Number(value || 0)));
+  return (
+    <div
+      style={{
+        height,
+        borderRadius: 999,
+        background: 'rgba(51,65,85,.7)',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          width: `${pct}%`,
+          height: '100%',
+          borderRadius: 999,
+          background: color,
+          transition: 'width .35s ease',
+        }}
+      />
+    </div>
+  );
+}
+
+function actionButtonStyle(color = '#38bdf8') {
+  return {
+    border: `1px solid ${color}80`,
+    background: `linear-gradient(135deg,${color}33,rgba(15,23,42,.9))`,
+    color: '#f8fafc',
+    borderRadius: 12,
+    padding: '9px 12px',
+    fontWeight: 900,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    justifyContent: 'center',
+    boxShadow: `0 12px 36px ${color}16`,
+  };
+}
+
+function SuggestedActionsPanel({
+  seg,
+  gov,
+  actionLog,
+  onApproveAction,
+  onSelectActionLog,
+}) {
+  const type = seg?.predType || 'normal';
+  const color = getTypeColor(type);
+  const suggestions = ACTION_SUGGESTIONS[type] || ACTION_SUGGESTIONS.normal;
+
+  return (
+    <div
+      style={{ display: 'grid', gap: 16, direction: 'rtl', textAlign: 'right' }}
+    >
+      <SectionCard
+        title="الإجراء المعتمد"
+        icon={<Shield size={16} color={color} />}
+        right={
+          <SmallPill color={color} filled>
+            {getTypeLabelAr(type)}
+          </SmallPill>
+        }
+      >
+        <div
+          style={{
+            color: '#94a3b8',
+            fontSize: 13,
+            lineHeight: 1.75,
+            marginBottom: 14,
+          }}
+        >
+          يعرض النظام أكثر من إجراء ممكن حتى يبقى القرار بيد المشغّل. عند اعتماد
+          أي إجراء يتم حفظه في سجل تاريخي قابل للمراجعة والضغط عليه للرجوع إلى
+          المقطع المرتبط به.
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4,1fr)',
+            gap: 12,
+          }}
+        >
+          {[
+            { type: 'normal', title: 'استمرار المراقبة', detail: 'الوضع طبيعي ولا يوجد فقد غير مبرر حالياً.' },
+            { type: 'leak', title: 'إرسال فريق ميداني وفحص المقطع', detail: 'فقد تدريجي يحتاج تحقق ميداني قبل تفاقم الحالة.' },
+            { type: 'burst', title: 'عزل فوري للقطاع المتأثر', detail: 'حالة حرجة تتطلب تقليل الضرر وحصر الفاقد سريعاً.' },
+            { type: 'theft', title: 'تفتيش الوصلات ومراجعة الاستهلاك', detail: 'فقد غير متناسب مع الضغط يستدعي التحقق من التوصيلات.' },
+          ].map((action) => {
+            const actionColor = getTypeColor(action.type);
+            const active = action.type === type;
+            return (
+              <div
+                key={action.type}
+                style={{
+                  border: `1px solid ${actionColor}${active ? 'aa' : '33'}`,
+                  background: active ? `${actionColor}18` : 'rgba(2,6,23,.22)',
+                  borderRadius: 16,
+                  padding: 14,
+                  display: 'grid',
+                  gap: 10,
+                  minHeight: 186,
+                  boxShadow: active ? `0 0 34px ${actionColor}22` : 'none',
+                  transform: active ? 'translateY(-2px)' : 'none',
+                }}
+              >
+                <SmallPill color={actionColor} filled={active}>
+                  {getTypeLabelAr(action.type)}{active ? ' · الإجراء الحالي' : ''}
+                </SmallPill>
+                <div style={{ color: '#F8FAFC', fontSize: 14, fontWeight: 950, lineHeight: 1.45 }}>
+                  {action.title}
+                </div>
+                <div style={{ color: '#CBD5E1', fontSize: 12, lineHeight: 1.7 }}>
+                  {action.detail}
+                </div>
+                <button
+                  onClick={() => onApproveAction({ title: action.title, detail: action.detail, priority: getRiskLabel(action.type) })}
+                  style={{ ...actionButtonStyle(actionColor), marginTop: 'auto', opacity: active ? 1 : .82 }}
+                >
+                  <Zap size={14} /> اعتماد الإجراء
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="سجل الإجراءات المعتمدة"
+        icon={<Bell size={16} color="#22c55e" />}
+        right={<SmallPill color="#22c55e">{actionLog.length} إجراء</SmallPill>}
+      >
+        <div
+          style={{ display: 'grid', gap: 8, maxHeight: 280, overflowY: 'auto' }}
+        >
+          {actionLog.length === 0 && (
+            <div
+              style={{
+                color: '#64748b',
+                fontSize: 12,
+                textAlign: 'center',
+                padding: 18,
+              }}
+            >
+              لم يتم اعتماد أي إجراء بعد. اختر أحد الإجراءات المقترحة ليظهر هنا
+              كمرجع تشغيلي.
+            </div>
+          )}
+          {actionLog.map((item) => (
+            <div
+              key={item.id}
+              onClick={() =>
+                item.segSnapshot && onSelectActionLog(item.segSnapshot)
+              }
+              style={{
+                border: '1px solid rgba(34,197,94,.20)',
+                background: 'rgba(34,197,94,.08)',
+                borderRadius: 12,
+                padding: 12,
+                cursor: item.segSnapshot ? 'pointer' : 'default',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  alignItems: 'center',
+                }}
+              >
+                <div
+                  style={{ color: '#f8fafc', fontWeight: 950, fontSize: 13 }}
+                >
+                  {item.action}
+                </div>
+                <SmallPill color="#22c55e" filled>
+                  {item.status}
+                </SmallPill>
+              </div>
+              <div
+                style={{
+                  color: '#94a3b8',
+                  fontSize: 11,
+                  lineHeight: 1.6,
+                  marginTop: 6,
+                }}
+              >
+                {item.gov} · {item.segment} · {item.type} · {item.time}
+              </div>
+              <div
+                style={{
+                  color: '#64748b',
+                  fontSize: 11,
+                  lineHeight: 1.6,
+                  marginTop: 4,
+                }}
+              >
+                {item.detail}
+              </div>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
+function UserResearchPanel() {
+  return null;
+}
+
+function TechnicalPanel({ selectedSeg, activeModels = 4 }) {
+  const models = selectedSeg?.models || { lgb: 0, xgb: 0, nn: 0, lstm: 0 };
+  const rows = [
+    ['LightGBM', models.lgb || 0, 'خصائص جدولية من الضغط والتدفق'],
+    ['XGBoost', models.xgb || 0, 'تحقق متقاطع للأنماط غير الخطية'],
+    ['ResNet-MLP', models.nn || 0, 'نمذجة العلاقات المعقدة بين الخصائص'],
+    ['BiLSTM', models.lstm || 0, 'فهم تسلسل المقاطع داخل الفرع'],
+  ];
+  const color = getTypeColor(selectedSeg?.predType || 'normal');
+
+  return (
+    <div
+      style={{ display: 'grid', gap: 16, direction: 'rtl', textAlign: 'right' }}
+    >
+      <SectionCard
+        title="شرح الذكاء الاصطناعي"
+        icon={<Cpu size={16} color="#38bdf8" />}
+        right={
+          <SmallPill color="#22c55e">{activeModels} نماذج فعالة</SmallPill>
+        }
+      >
+        <div
+          style={{
+            color: '#94a3b8',
+            fontSize: 13,
+            lineHeight: 1.75,
+            marginBottom: 14,
+          }}
+        >
+          يعرض هذا المسار كيف تتحول قراءات الحساسات إلى قرار تشغيلي واضح يمكن شرحه للحكام دون الدخول في تفاصيل أكاديمية معقدة.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8, marginBottom: 14 }}>
+          {['بيانات الحساسات','تحليل الذكاء الاصطناعي','نوع الخلل','موقع الخلل','الإجراء الموصى به'].map((step, i) => (
+            <div key={step} style={{ border: '1px solid rgba(34,229,255,.18)', background: 'rgba(34,229,255,.07)', borderRadius: 12, padding: 10, textAlign: 'center', color: '#E0F7FF', fontWeight: 900, fontSize: 12 }}>
+              {step}
+              {i < 4 && <span style={{ color: '#22E5FF', marginInlineStart: 8 }}>←</span>}
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+          {Object.keys(TYPE_CONFIG).map((t) => <SmallPill key={t} color={getTypeColor(t)} filled>{getTypeLabelAr(t)}</SmallPill>)}
+          <SmallPill color="#22C55E" filled>دقة الكشف: 99.94%</SmallPill>
+        </div>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {rows.map(([name, val, desc]) => (
+            <div
+              key={name}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '110px 1fr 56px',
+                gap: 12,
+                alignItems: 'center',
+              }}
+            >
+              <div style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 900 }}>
+                {name}
+              </div>
+              <ProgressBar
+                value={val}
+                color={val > 70 ? color : val > 35 ? '#f59e0b' : '#38bdf8'}
+              />
+              <div
+                style={{
+                  color: '#94a3b8',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  fontSize: 11,
+                }}
+              >
+                {Number(val).toFixed(1)}%
+              </div>
+              <div />
+              <div style={{ color: '#64748b', fontSize: 11, marginTop: -6 }}>
+                {desc}
+              </div>
+              <div />
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="خصائص المقطع الحالي"
+        icon={<Sliders size={16} color="#f59e0b" />}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4,1fr)',
+            gap: 10,
+          }}
+        >
+          <MiniMetric
+            label="فقد التدفق"
+            value={`${selectedSeg?.flowLoss?.toFixed?.(2) || '0.00'}%`}
+            color="#f59e0b"
+          />
+          <MiniMetric
+            label="الفقد الزائد"
+            value={`${selectedSeg?.excessLoss?.toFixed?.(2) || '0.00'}%`}
+            color="#ef4444"
+          />
+          <MiniMetric
+            label="DP DEV"
+            value={`${selectedSeg?.dpDev?.toFixed?.(3) || '0.000'}`}
+            color="#38bdf8"
+          />
+          <MiniMetric
+            label="PIPE AGE"
+            value={`${selectedSeg?.age || 0}y`}
+            color="#a855f7"
+          />
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+// ══════════════════════════════════════════════════════════════════════════════
+// MAIN DASHBOARD
+// ══════════════════════════════════════════════════════════════════════════════
+export default function AquaGuardDashboard() {
+  const [govKey, setGovKey] = useState('Amman');
+  const [simData, setSimData] = useState(null);
+  const [allAlerts, setAllAlerts] = useState([]);
+  const [selectedSeg, setSelectedSeg] = useState(null);
+  const [tick, setTick] = useState(0);
+  const [countdown, setCountdown] = useState(UPDATE_INTERVAL_SEC);
+  const [forceType, setForceType] = useState(null);
+  const [showGovMenu, setShowGovMenu] = useState(false);
+  const [govSearch, setGovSearch] = useState('');
+  const [simMode, setSimMode] = useState(false);
+  const [simPressure, setSimPressure] = useState(80);
+  const [simFlow, setSimFlow] = useState(300);
+  const [flowHist, setFlowHist] = useState(Array(30).fill(0));
+  const [pressHist, setPressHist] = useState(Array(30).fill(0));
+  const [scatterData, setScatterData] = useState([]);
+  const [activeTab, setActiveTab] = useState('map');
+  const [actionLog, setActionLog] = useState([]);
+  const menuRef = useRef(null);
+
+  // ─── HYDRAULIC STATE ──────────────────────────────────────────────────
+  // Persistent reservoir volumes per governorate (Record<string, number>)
+  const [reservoirLevels, setReservoirLevels] = useState(() => {
+    const init = {};
+    Object.entries(NETWORK).forEach(([k, v]) => {
+      init[k] = v.reservoirCap;
+    });
+    return init;
+  });
+  // Cumulative system loss (NRW water "disappeared") per governorate
+  const [systemLoss, setSystemLoss] = useState(() => {
+    const init = {};
+    Object.keys(NETWORK).forEach((k) => {
+      init[k] = 0;
+    });
+    return init;
+  });
+  // Pump pulse visual flag — true for the first ~1.2s after each cycle
+  const [pumping, setPumping] = useState(false);
+
+  const gov = NETWORK[govKey];
+
+  // ─── runCycle: simulate + apply mass balance ──────────────────────────
+  const runCycle = useCallback(
+    async (ftype = null) => {
+      const apiResult = await (async () => {
+        await apiPost('/api/refresh', {
+          gov: govKey,
+          force: ftype || forceType,
+        });
+        return apiGet('/api/state');
+      })();
+
+      let segments, alerts, mass;
+      if (apiResult && apiResult.segments) {
+        segments = apiResult.segments;
+        alerts = apiResult.allAlerts || [];
+        mass = apiResult.mass || null;
+        if (apiResult.fh) setFlowHist(apiResult.fh);
+        if (apiResult.ph) setPressHist(apiResult.ph);
+      } else {
+        const sim = simulateGov(govKey, ftype || forceType);
+        segments = sim.segments;
+        alerts = sim.alerts;
+        mass = sim.mass;
+        if (segments.length) {
+          const first = segments[0];
+          setFlowHist((p) => [
+            ...p.slice(1),
+            +(first.flowIn + Math.random() * 5 - 2.5).toFixed(1),
+          ]);
+          setPressHist((p) => [
+            ...p.slice(1),
+            +(first.pressIn + Math.random() * 2 - 1).toFixed(2),
+          ]);
+        }
+      }
+
+      // Build fallback mass object if API didn't provide one
+      if (!mass) {
+        const totalFlow = segments.reduce(
+          (s, seg) => s + (seg.depth === 1 ? seg.flowIn : 0),
+          0
+        );
+        const branchInflows = {};
+        segments.forEach((s) => {
+          if (s.depth === 1) branchInflows[s.branch] = s.flowIn;
+        });
+        const cycleM3 = (totalFlow * UPDATE_INTERVAL_SEC) / 60 / 1000;
+        mass = {
+          branchInflows,
+          totalBranchInflow: totalFlow,
+          totalOutflowM3PerHr: +((totalFlow * 60) / 1000).toFixed(1),
+          cycleOutflowM3: +cycleM3.toFixed(2),
+          systemLossM3: +(cycleM3 * gov.nrw).toFixed(2),
+          deliveredM3: +(cycleM3 * (1 - gov.nrw)).toFixed(2),
+        };
+      }
+
+      // Apply mass balance to reservoir
+      setReservoirLevels((prev) => {
+        const cur = prev[govKey] ?? gov.reservoirCap;
+        const nxt = Math.max(0, cur - mass.cycleOutflowM3);
+        return { ...prev, [govKey]: nxt };
+      });
+      setSystemLoss((prev) => ({
+        ...prev,
+        [govKey]: (prev[govKey] || 0) + mass.systemLossM3,
+      }));
+
+      // Trigger pump pulse animation
+      setPumping(true);
+      setTimeout(() => setPumping(false), 1200);
+
+      setSimData({ segments, govKey, mass });
+      if (alerts.length) {
+        setAllAlerts((prev) =>
+          [
+            ...alerts.map((a) => ({
+              ...a,
+              ts: a.ts || new Date().toLocaleTimeString(),
+            })),
+            ...prev,
+          ].slice(0, 60)
+        );
+      }
+      setScatterData(
+        segments.map((s) => ({
+          x: +s.flowLoss.toFixed(2),
+          y: +Math.abs(s.dpDev).toFixed(3),
+          type: s.predType,
+          id: s.id,
+        }))
+      );
+      setTick((t) => t + 1);
+    },
+    [govKey, forceType, gov.nrw, gov.reservoirCap]
+  );
+
+  useEffect(() => {
+    runCycle();
+  }, [govKey]);
+
+  // SYNCHRONIZED PUMP CYCLE
+  useEffect(() => {
+    const id = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          runCycle();
+          return UPDATE_INTERVAL_SEC;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [runCycle]);
+
+  useEffect(() => {
+    const h = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target))
+        setShowGovMenu(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  const segments = simData?.segments || [];
+  const mass = simData?.mass || {
+    branchInflows: {},
+    totalOutflowM3PerHr: 0,
+    cycleOutflowM3: 0,
+    systemLossM3: 0,
+    deliveredM3: 0,
+  };
+  const alertSegs = segments.filter((s) => s.alert);
+  const burstSegs = segments.filter((s) => s.predType === 'burst');
+  const maxLoss = Math.max(0, ...segments.map((s) => s.flowLoss));
+  const maxDP = Math.max(0, ...segments.map((s) => Math.abs(s.dpDev)));
+  const worstType = burstSegs.length
+    ? 'burst'
+    : alertSegs[0]?.predType || 'normal';
+  const selectedOrWorst =
+    selectedSeg || burstSegs[0] || alertSegs[0] || segments[0] || null;
+
+  const currentReservoir = reservoirLevels[govKey] ?? gov.reservoirCap;
+  const reservoirPct = (currentReservoir / gov.reservoirCap) * 100;
+  const totalSystemLoss = systemLoss[govKey] || 0;
+
+  const approveAction = useCallback(
+    (action) => {
+      const seg = selectedOrWorst;
+      setActionLog((prev) =>
+        [
+          {
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            action: action.title,
+            detail: action.detail,
+            status: 'تم اعتماد الإجراء',
+            gov: gov.label,
+            type: getTypeLabelAr(seg?.predType || 'normal'),
+            segment: seg
+              ? `${seg.branch} · D${seg.depth} · ${seg.from} → ${seg.to}`
+              : 'لا يوجد مقطع محدد',
+            time: new Date().toLocaleTimeString(),
+            segSnapshot: seg,
+          },
+          ...prev,
+        ].slice(0, 30)
+      );
+    },
+    [selectedOrWorst, gov.label]
+  );
+
+  const refillReservoir = () => {
+    setReservoirLevels((prev) => ({ ...prev, [govKey]: gov.reservoirCap }));
+    setSystemLoss((prev) => ({ ...prev, [govKey]: 0 }));
+  };
+
+  const simAnomalyProb = useMemo(() => {
+    if (!simMode) return null;
+    const fl = Math.max(0, (100 * (simFlow - 280)) / 280);
+    const dp = Math.max(0, ((100 - simPressure) / 100) * 20);
+    return Math.min(99, Math.round(fl * 0.5 + dp * 0.5));
+  }, [simMode, simPressure, simFlow]);
+
+  const filteredGovs = Object.entries(NETWORK).filter(
+    ([k, v]) =>
+      v.label.includes(govSearch) ||
+      k.toLowerCase().includes(govSearch.toLowerCase())
+  );
+
+  const flowHistData = flowHist.map((v, i) => ({ i, v, time: formatDayTimeTick(i, flowHist.length) }));
+  const pressHistData = pressHist.map((v, i) => ({ i, v, time: formatDayTimeTick(i, pressHist.length) }));
+
+  const TYPE_DOT = {
+    normal: '#22c55e',
+    leak: '#f59e0b',
+    burst: '#ef4444',
+    theft: '#a855f7',
+  };
+
+  return (
+    <div
+      style={{
+        background: 'transparent',
+        minHeight: '100vh',
+        color: '#F8FAFC',
+        fontFamily: "'Tajawal',system-ui,sans-serif",
+        overflow: 'auto',
+        direction: 'rtl',
+        position: 'relative',
+        zIndex: 1,
+      }}
+    >
+      {/* ── HEADER ── */}
+      <div
+        style={{
+          margin: '18px 20px 0',
+          padding: '22px 24px',
+          borderRadius: 22,
+          background:
+            'linear-gradient(135deg,rgba(13,25,48,.88),rgba(6,11,24,.78))',
+          border: '1px solid rgba(34,229,255,.20)',
+          boxShadow: '0 24px 80px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.04)',
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          gap: 18,
+          alignItems: 'center',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'radial-gradient(circle at 20% 10%, rgba(34,229,255,.17), transparent 28%), radial-gradient(circle at 86% 30%, rgba(168,85,247,.10), transparent 24%)',
+            pointerEvents: 'none',
+          }}
+        />
+        <div style={{ position: 'relative', zIndex: 1, textAlign: 'right' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              gap: 10,
+              marginBottom: 8,
+              flexWrap: 'wrap',
+            }}
+          >
+            <SmallPill color="#22E5FF" filled>
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: '#22E5FF',
+                  display: 'inline-block',
+                  animation: 'aqPulse 1.4s infinite',
+                }}
+              />
+              وضع المحاكاة الحي · {countdown} ثانية
+            </SmallPill>
+            {pumping && <SmallPill color="#22d3ee" filled>دورة ضخ نشطة</SmallPill>}
+            <SmallPill color={getTypeColor(selectedOrWorst?.predType || 'normal')} filled>
+              {getTypeLabelAr(selectedOrWorst?.predType || 'normal')}
+            </SmallPill>
+          </div>
+          <div
+            style={{
+              fontSize: 42,
+              lineHeight: 1,
+              fontWeight: 950,
+              color: '#F8FAFC',
+              letterSpacing: -0.8,
+              textShadow: '0 0 28px rgba(34,229,255,.35)',
+            }}
+          >
+            AquaGuard AI
+          </div>
+          <div
+            style={{
+              marginTop: 10,
+              maxWidth: 940,
+              color: '#CBD5E1',
+              fontSize: 15,
+              lineHeight: 1.75,
+              fontWeight: 600,
+            }}
+          >
+            منظومة ذكاء اصطناعي لمراقبة شبكات المياه، كشف الفاقد، تصنيف الأعطال، وتوجيه القرار التشغيلي خلال 15 ثانية.
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+            {['normal', 'leak', 'burst', 'theft'].map((t) => (
+              <button
+                key={t}
+                onClick={() => {
+                  setForceType(t === 'normal' ? null : t);
+                  runCycle(t === 'normal' ? null : t);
+                }}
+                style={{
+                  padding: '7px 13px',
+                  borderRadius: 999,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  fontWeight: 900,
+                  background:
+                    forceType === t || (!forceType && t === 'normal')
+                      ? `${TYPE_DOT[t]}24`
+                      : 'rgba(2,6,23,.24)',
+                  border: `1px solid ${TYPE_DOT[t]}80`,
+                  color: TYPE_DOT[t],
+                  transition: 'all .15s',
+                }}
+              >
+                {getTypeLabelAr(t)}
+              </button>
+            ))}
+            <button
+              onClick={() => setSimMode((m) => !m)}
+              style={{
+                padding: '7px 13px',
+                borderRadius: 999,
+                fontSize: 12,
+                cursor: 'pointer',
+                fontWeight: 900,
+                background: simMode ? 'rgba(99,102,241,.25)' : 'rgba(2,6,23,.24)',
+                border: '1px solid rgba(99,102,241,.55)',
+                color: '#a5b4fc',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Sliders size={13} /> وضع التجربة
+            </button>
+            <button
+              onClick={() => runCycle()}
+              style={{
+                padding: '7px 13px',
+                borderRadius: 999,
+                fontSize: 12,
+                cursor: 'pointer',
+                fontWeight: 900,
+                background: 'rgba(34,229,255,.08)',
+                border: '1px solid rgba(34,229,255,.38)',
+                color: '#22E5FF',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <RefreshCw size={13} /> تحديث القراءة
+            </button>
+          </div>
+        </div>
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            minWidth: 240,
+            padding: 16,
+            borderRadius: 18,
+            background: 'rgba(6,11,24,.52)',
+            border: '1px solid rgba(34,229,255,.16)',
+            textAlign: 'left',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10 }}>
+            <div>
+              <div style={{ color: '#F8FAFC', fontWeight: 950, fontSize: 15 }}>فريق Change The Future</div>
+              <div style={{ color: '#CBD5E1', fontSize: 12, marginTop: 3 }}>جامعة عمان العربية</div>
+            </div>
+            <div
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 14,
+                background: 'linear-gradient(135deg,#22E5FF,#38BDF8,#6366f1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 0 32px rgba(34,229,255,.30)',
+              }}
+            >
+              <Droplets size={24} color="#fff" />
+            </div>
+          </div>
+          <div style={{ marginTop: 13, color: '#94A3B8', fontSize: 11, lineHeight: 1.65 }}>
+            واجهة عرض حكام · SCADA / AI · نقاط تحقق تدفق وضغط
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          padding: '14px 20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+        }}
+      >
+        {/* ── GOV SELECTOR + الخزان SUMMARY ── */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div ref={menuRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowGovMenu((m) => !m)}
+              style={{
+                padding: '8px 14px',
+                borderRadius: 8,
+                background: '#0f1f3d',
+                border: '1px solid rgba(56,189,248,.25)',
+                color: '#e2e8f0',
+                fontSize: 13,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                minWidth: 200,
+              }}
+            >
+              <MapPin size={14} color={gov.color} />
+              <span style={{ flex: 1, textAlign: 'right' }}>{gov.label}</span>
+              <span
+                style={{
+                  color: '#64748b',
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                }}
+              >
+                {govKey}
+              </span>
+              <ChevronDown size={14} color="#64748b" />
+            </button>
+            {showGovMenu && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 4px)',
+                  left: 0,
+                  width: 280,
+                  background: '#0f1f3d',
+                  border: '1px solid rgba(56,189,248,.2)',
+                  borderRadius: 10,
+                  zIndex: 100,
+                  overflow: 'hidden',
+                  boxShadow: '0 20px 60px rgba(0,0,0,.6)',
+                }}
+              >
+                <div
+                  style={{
+                    padding: '8px 10px',
+                    borderBottom: '1px solid rgba(56,189,248,.1)',
+                  }}
+                >
+                  <input
+                    value={govSearch}
+                    onChange={(e) => setGovSearch(e.target.value)}
+                    placeholder="ابحث عن محافظة..."
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px',
+                      borderRadius: 6,
+                      background: '#060c18',
+                      border: '1px solid rgba(56,189,248,.2)',
+                      color: '#e2e8f0',
+                      fontSize: 12,
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+                <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                  {filteredGovs.map(([k, v]) => {
+                    const pct =
+                      ((reservoirLevels[k] ?? v.reservoirCap) /
+                        v.reservoirCap) *
+                      100;
+                    return (
+                      <button
+                        key={k}
+                        onClick={() => {
+                          setGovKey(k);
+                          setShowGovMenu(false);
+                          setGovSearch('');
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '9px 14px',
+                          background:
+                            k === govKey
+                              ? 'rgba(56,189,248,.08)'
+                              : 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          color: '#e2e8f0',
+                          textAlign: 'right',
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            background: v.color,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span
+                          style={{ flex: 1, textAlign: 'right', fontSize: 14 }}
+                        >
+                          {v.label}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            color:
+                              pct > 60
+                                ? '#22c55e'
+                                : pct > 30
+                                ? '#f59e0b'
+                                : '#ef4444',
+                            fontFamily: 'monospace',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {pct.toFixed(0)}%
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{ fontSize: 12, color: '#64748b', fontFamily: 'monospace' }}
+          >
+            {gov.source}
+          </div>
+
+          {/* Reservoir capacity indicator */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '4px 12px',
+              background: 'rgba(56,189,248,.06)',
+              borderRadius: 6,
+              border: '1px solid rgba(56,189,248,.15)',
+            }}
+          >
+            <Database size={12} color="#38bdf8" />
+            <span style={{ fontSize: 10, color: '#CBD5E1' }}>السعة:</span>
+            <span
+              style={{
+                fontSize: 11,
+                color: '#38bdf8',
+                fontFamily: 'monospace',
+                fontWeight: 700,
+              }}
+            >
+              {(gov.reservoirCap / 1000).toFixed(0)}k م³
+            </span>
+          </div>
+
+          <button
+            onClick={refillReservoir}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 6,
+              fontSize: 10,
+              cursor: 'pointer',
+              fontWeight: 600,
+              background: 'rgba(34,197,94,.08)',
+              border: '1px solid rgba(34,197,94,.4)',
+              color: '#22c55e',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            ↻ تعبئة الخزان
+          </button>
+
+          <div
+            style={{
+              marginLeft: 'auto',
+              fontSize: 11,
+              color: '#475569',
+              fontFamily: 'monospace',
+            }}
+          >
+            دورة #{tick}
+          </div>
+        </div>
+
+        {/* ── KPI ROW — 4 cards for judges ── */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4,minmax(0,1fr))',
+            gap: 12,
+          }}
+        >
+          {[
+            {
+              l: 'حالة الشبكة',
+              v: getTypeLabelAr(worstType),
+              u: alertSegs.length ? 'يوجد خلل نشط' : 'تشغيل مستقر',
+              c: getTypeColor(worstType),
+              icon: <Shield size={18} />,
+            },
+            { l: 'الإنذارات النشطة', v: alertSegs.length, u: `${allAlerts.length} في السجل`, c: '#F59E0B', icon: <Bell size={18} /> },
+            {
+              l: 'نسبة الفاقد الحالية',
+              v: `${Math.max(maxLoss, gov.nrw * 100).toFixed(1)}%`,
+              u: 'مؤشر NRW / Flow Loss',
+              c: gov.nrw > 0.5 ? '#EF4444' : gov.nrw > 0.4 ? '#F59E0B' : '#22C55E',
+              icon: <TrendingDown size={18} />,
+            },
+            { l: 'زمن الاستجابة', v: '15 ثانية', u: `التحديث التالي خلال ${countdown} ث`, c: '#22E5FF', icon: <Zap size={18} /> },
+          ].map((k, i) => (
+            <div
+              key={i}
+              style={{
+                background: 'rgba(13,25,48,.72)',
+                border: `1px solid ${k.c}38`,
+                borderRadius: 18,
+                padding: '16px 16px',
+                boxShadow: `0 18px 44px rgba(0,0,0,.22), 0 0 30px ${k.c}10`,
+                position: 'relative',
+                overflow: 'hidden',
+              }}
+            >
+              <div style={{ position: 'absolute', insetInlineEnd: -18, top: -18, width: 84, height: 84, borderRadius: '50%', background: `${k.c}14` }} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, position: 'relative' }}>
+                <div style={{ fontSize: 12, color: '#CBD5E1', fontWeight: 900 }}>{k.l}</div>
+                <div style={{ color: k.c, display: 'flex' }}>{k.icon}</div>
+              </div>
+              <div
+                style={{
+                  fontSize: 28,
+                  fontWeight: 950,
+                  color: k.c,
+                  marginTop: 10,
+                  lineHeight: 1,
+                  fontFamily: "'IBM Plex Mono','Tajawal',monospace",
+                }}
+              >
+                {k.v}
+              </div>
+              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>{k.u}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── MAIN CONTENT GRID ── */}
+        <div
+          style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 14 }}
+        >
+          {/* LEFT: Map + Arabic operator tabs */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <SectionCard
+              title="التبويبات التشغيلية الداخلية"
+              icon={<Activity size={16} color="#38bdf8" />}
+              right={
+                <SmallPill
+                  color={getTypeColor(selectedOrWorst?.predType || 'normal')}
+                  filled
+                >
+                  {getTypeLabelAr(selectedOrWorst?.predType || 'normal')}
+                </SmallPill>
+              }
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(5,1fr)',
+                  gap: 7,
+                  marginBottom: 14,
+                  direction: 'rtl',
+                }}
+              >
+                {[
+                  ['map', 'الخريطة الحية'],
+                  ['telemetry', 'القياسات الحية'],
+                  ['scatter', 'تحليل نمط الخلل'],
+                  ['actions', 'الإجراء المعتمد'],
+                  ['technical', 'شرح الذكاء الاصطناعي'],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setActiveTab(key)}
+                    style={{
+                      padding: '9px 10px',
+                      borderRadius: 10,
+                      border: `1px solid ${
+                        activeTab === key
+                          ? 'rgba(56,189,248,.42)'
+                          : 'rgba(148,163,184,.12)'
+                      }`,
+                      background:
+                        activeTab === key
+                          ? 'rgba(56,189,248,.12)'
+                          : 'rgba(2,6,23,.18)',
+                      color: activeTab === key ? '#38bdf8' : '#94a3b8',
+                      fontSize: 11,
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {activeTab === 'map' && (
+                <div
+                  style={{
+                    background: 'rgba(2,6,23,.24)',
+                    border: '1px solid rgba(148,163,184,.08)',
+                    borderRadius: 14,
+                    padding: 14,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: '#94a3b8',
+                        fontFamily: 'monospace',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      الخريطة الحية للشبكة — {gov.label} · {gov.source}
+                    </div>
+                    {pumping && (
+                      <SmallPill color="#22d3ee" filled>
+                        ⚡ دورة ضخ نشطة
+                      </SmallPill>
+                    )}
+                  </div>
+                  <div
+                    style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingTop: 4,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 9,
+                          color: '#64748b',
+                          fontFamily: 'monospace',
+                          letterSpacing: 0.3,
+                        }}
+                      >
+                        الخزان
+                      </div>
+                      <ReservoirTank
+                        currentM3={currentReservoir}
+                        capacityM3={gov.reservoirCap}
+                        pulsing={pumping}
+                        govColor={gov.color}
+                      />
+                      <div
+                        style={{
+                          fontSize: 9,
+                          color: '#64748b',
+                          fontFamily: 'monospace',
+                          textAlign: 'center',
+                        }}
+                      >
+                        {(currentReservoir / 1000).toFixed(1)}k
+                        <br />
+                        <span style={{ color: '#334155' }}>
+                          / {(gov.reservoirCap / 1000).toFixed(0)}k م³
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 8,
+                          color: '#64748b',
+                          textAlign: 'center',
+                          paddingTop: 4,
+                          borderTop: '1px solid rgba(56,189,248,.1)',
+                          marginTop: 2,
+                          width: '100%',
+                        }}
+                      >
+                        <div
+                          style={{
+                            color: '#ef4444',
+                            fontWeight: 600,
+                            fontFamily: 'monospace',
+                          }}
+                        >
+                          −{mass.systemLossM3?.toFixed(1) ?? 0}
+                        </div>
+                        <div>م³ في هذه الدورة</div>
+                      </div>
+                    </div>
+
+                    <div style={{ flex: 1 }}>
+                      <PipeNetworkMap
+                        govKey={govKey}
+                        segments={segments}
+                        onSegClick={setSelectedSeg}
+                        selectedSeg={selectedSeg}
+                        pumping={pumping}
+                        branchInflows={mass.branchInflows}
+                        totalOutflowM3PerHr={mass.totalOutflowM3PerHr}
+                      />
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 16,
+                      marginTop: 10,
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    {Object.entries(TYPE_CONFIG).map(([k, v]) => (
+                      <span
+                        key={k}
+                        style={{
+                          color: v.color,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            background: v.color,
+                            display: 'inline-block',
+                          }}
+                        />
+                        {v.label}
+                      </span>
+                    ))}
+                    <span style={{ marginInlineStart: 'auto', color: '#CBD5E1' }}>
+                      اضغط على أي مقطع لعرض معلومات نقطة التحقق
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'scatter' && (
+                <div
+                  style={{
+                    background: 'rgba(2,6,23,.24)',
+                    border: '1px solid rgba(148,163,184,.08)',
+                    borderRadius: 14,
+                    padding: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      color: '#94a3b8',
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      fontWeight: 900,
+                      marginBottom: 4,
+                    }}
+                  >
+                    تحليل نمط الخلل — العلاقة بين فقد التدفق وانحراف الضغط
+                  </div>
+                  <div
+                    style={{
+                      color: '#64748b',
+                      fontSize: 11,
+                      marginBottom: 10,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    محور X يوضح نسبة فقد التدفق، ومحور Y يوضح مقدار انحراف هبوط
+                    الضغط عن السلوك المتوقع. كل نقطة تمثل مقطعاً واحداً في
+                    الشبكة.
+                  </div>
+                  <ResponsiveContainer width="100%" height={420}>
+                    <ScatterChart
+                      margin={{ top: 20, right: 24, bottom: 42, left: 24 }}
+                    >
+                      <CartesianGrid stroke="rgba(148,163,184,.12)" />
+                      <XAxis
+                        type="number"
+                        dataKey="x"
+                        name="نسبة فقد التدفق %"
+                        stroke="#64748b"
+                        tick={{ fontSize: 11, fill: '#94a3b8' }}
+                        label={{
+                          value: 'نسبة فقد التدفق (%)',
+                          position: 'insideBottom',
+                          offset: -10,
+                          fill: '#94a3b8',
+                          fontSize: 11,
+                        }}
+                      />
+                      <YAxis
+                        type="number"
+                        dataKey="y"
+                        name="انحراف الضغط"
+                        stroke="#64748b"
+                        tick={{ fontSize: 11, fill: '#94a3b8' }}
+                        label={{
+                          value: 'انحراف الضغط',
+                          angle: -90,
+                          position: 'insideLeft',
+                          fill: '#94a3b8',
+                          fontSize: 11,
+                        }}
+                      />
+                      <RTooltip
+                        cursor={{ strokeDasharray: '3 3' }}
+                        content={({ payload }) => {
+                          if (!payload?.length) return null;
+                          const d = payload[0].payload;
+                          return (
+                            <div
+                              style={{
+                                background: '#0f1f3d',
+                                border: '1px solid rgba(56,189,248,.3)',
+                                borderRadius: 8,
+                                padding: '8px 12px',
+                                fontSize: 11,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  color: TYPE_DOT[d.type],
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {getTypeLabelAr(d.type)}
+                              </div>
+                              <div style={{ color: '#94a3b8' }}>
+                                نسبة فقد التدفق: {d.x}%
+                              </div>
+                              <div style={{ color: '#94a3b8' }}>
+                                انحراف الضغط: {d.y}
+                              </div>
+                            </div>
+                          );
+                        }}
+                      />
+                      {Object.keys(TYPE_DOT).map((t) => (
+                        <Scatter
+                          key={t}
+                          name={getTypeLabelAr(t)}
+                          data={scatterData.filter((d) => d.type === t)}
+                          fill={TYPE_DOT[t]}
+                          onClick={(d) => {
+                            const seg = segments.find((s) => s.id === d?.id);
+                            if (seg) setSelectedSeg(seg);
+                          }}
+                        />
+                      ))}
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              {activeTab === 'telemetry' && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      height: 260,
+                      background: 'rgba(2,6,23,.24)',
+                      borderRadius: 14,
+                      padding: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        marginBottom: 8,
+                      }}
+                    >
+                      التدفق خلال اليوم
+                    </div>
+                    <ResponsiveContainer width="100%" height="88%">
+                      <AreaChart
+                        data={flowHistData}
+                        margin={{ top: 10, right: 14, bottom: 30, left: 24 }}
+                      >
+                        <defs>
+                          <linearGradient
+                            id="flowGrad"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop
+                              offset="5%"
+                              stopColor="#38bdf8"
+                              stopOpacity={0.55}
+                            />
+                            <stop
+                              offset="95%"
+                              stopColor="#38bdf8"
+                              stopOpacity={0.02}
+                            />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="rgba(148,163,184,.10)" />
+                        <XAxis
+                          dataKey="time"
+                          interval={5}
+                          stroke="#94A3B8"
+                          tick={{ fontSize: 10, fill: '#94a3b8' }}
+                          label={{
+                            value: 'الوقت من 00:00 إلى 24:00',
+                            position: 'insideBottom',
+                            offset: -18,
+                            fill: '#94a3b8',
+                            fontSize: 10,
+                          }}
+                        />
+                        <YAxis
+                          stroke="#64748b"
+                          tick={{ fontSize: 10, fill: '#94a3b8' }}
+                          label={{
+                            value: 'التدفق (لتر/دقيقة)',
+                            angle: -90,
+                            position: 'insideLeft',
+                            fill: '#94a3b8',
+                            fontSize: 10,
+                          }}
+                        />
+                        <RTooltip
+                          contentStyle={{
+                            background: '#0a1628',
+                            border: '1px solid rgba(56,189,248,.16)',
+                            borderRadius: 10,
+                            color: '#f8fafc',
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="v"
+                          stroke="#38bdf8"
+                          fill="url(#flowGrad)"
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div
+                    style={{
+                      height: 260,
+                      background: 'rgba(2,6,23,.24)',
+                      borderRadius: 14,
+                      padding: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        marginBottom: 8,
+                      }}
+                    >
+                      الضغط خلال اليوم
+                    </div>
+                    <ResponsiveContainer width="100%" height="88%">
+                      <AreaChart
+                        data={pressHistData}
+                        margin={{ top: 10, right: 14, bottom: 30, left: 24 }}
+                      >
+                        <defs>
+                          <linearGradient
+                            id="pressGrad"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop
+                              offset="5%"
+                              stopColor="#a855f7"
+                              stopOpacity={0.55}
+                            />
+                            <stop
+                              offset="95%"
+                              stopColor="#a855f7"
+                              stopOpacity={0.02}
+                            />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="rgba(148,163,184,.10)" />
+                        <XAxis
+                          dataKey="time"
+                          interval={5}
+                          stroke="#94A3B8"
+                          tick={{ fontSize: 10, fill: '#94a3b8' }}
+                          label={{
+                            value: 'الوقت من 00:00 إلى 24:00',
+                            position: 'insideBottom',
+                            offset: -18,
+                            fill: '#94a3b8',
+                            fontSize: 10,
+                          }}
+                        />
+                        <YAxis
+                          stroke="#64748b"
+                          tick={{ fontSize: 10, fill: '#94a3b8' }}
+                          label={{
+                            value: 'الضغط (بار)',
+                            angle: -90,
+                            position: 'insideLeft',
+                            fill: '#94a3b8',
+                            fontSize: 10,
+                          }}
+                        />
+                        <RTooltip
+                          contentStyle={{
+                            background: '#0a1628',
+                            border: '1px solid rgba(56,189,248,.16)',
+                            borderRadius: 10,
+                            color: '#f8fafc',
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="v"
+                          stroke="#a855f7"
+                          fill="url(#pressGrad)"
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div
+                    style={{
+                      background: 'rgba(13,25,48,.72)',
+                      border: '1px solid rgba(34,229,255,.18)',
+                      borderRadius: 16,
+                      padding: 16,
+                      gridColumn: '1 / -1',
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(4,1fr)',
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ gridColumn: '1 / -1', color: '#F8FAFC', fontWeight: 950, fontSize: 13 }}>
+                      آخر قراءة تشغيلية
+                    </div>
+                    <MiniMetric label="الوقت" value={new Date().toLocaleTimeString('ar-JO', { hour: '2-digit', minute: '2-digit' })} color="#22E5FF" />
+                    <MiniMetric label="الحالة" value={getTypeLabelAr(selectedOrWorst?.predType || 'normal')} color={getTypeColor(selectedOrWorst?.predType || 'normal')} />
+                    <MiniMetric label="الثقة" value={`${selectedOrWorst?.confidence?.toFixed?.(0) || 98}%`} color="#38BDF8" />
+                    <MiniMetric
+                      label="الإجراء المقترح"
+                      value={
+                        selectedOrWorst?.predType === 'burst'
+                          ? 'عزل فوري'
+                          : selectedOrWorst?.predType === 'leak'
+                          ? 'فحص ميداني'
+                          : selectedOrWorst?.predType === 'theft'
+                          ? 'تفتيش الوصلات'
+                          : 'استمرار المراقبة'
+                      }
+                      color={getTypeColor(selectedOrWorst?.predType || 'normal')}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'actions' && (
+                <SuggestedActionsPanel
+                  seg={selectedOrWorst}
+                  gov={gov}
+                  actionLog={actionLog}
+                  onApproveAction={approveAction}
+                  onSelectActionLog={(seg) => {
+                    setSelectedSeg(seg);
+                    setActiveTab('map');
+                  }}
+                />
+              )}
+
+                            {activeTab === 'technical' && (
+                <TechnicalPanel selectedSeg={selectedOrWorst} />
+              )}
+            </SectionCard>
+            {/* SIMULATION MODE */}
+            {simMode && (
+              <div
+                style={{
+                  background: 'linear-gradient(135deg,#0f0d2e,#1a0a2e)',
+                  border: '1px solid rgba(99,102,241,.3)',
+                  borderRadius: 12,
+                  padding: 16,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginBottom: 14,
+                  }}
+                >
+                  <Cpu size={14} color="#818cf8" />
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: '#818cf8',
+                      fontFamily: 'monospace',
+                      fontWeight: 600,
+                    }}
+                  >
+                    وضع المحاكاة التنبؤية — عدّل الضغط والتدفق لمشاهدة استجابة الذكاء الاصطناعي
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr 1fr',
+                    gap: 16,
+                    alignItems: 'center',
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: '#6366f1',
+                        marginBottom: 6,
+                      }}
+                    >
+                      ضغط الدخول:{' '}
+                      <span
+                        style={{ color: '#c7d2fe', fontFamily: 'monospace' }}
+                      >
+                        {simPressure} PSI
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={20}
+                      max={130}
+                      value={simPressure}
+                      onChange={(e) => setSimPressure(+e.target.value)}
+                      style={{ width: '100%', accentColor: '#6366f1' }}
+                    />
+                  </div>
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: '#6366f1',
+                        marginBottom: 6,
+                      }}
+                    >
+                      تدفق الدخول:{' '}
+                      <span
+                        style={{ color: '#c7d2fe', fontFamily: 'monospace' }}
+                      >
+                        {simFlow} لتر/دقيقةin
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={50}
+                      max={600}
+                      value={simFlow}
+                      onChange={(e) => setSimFlow(+e.target.value)}
+                      style={{ width: '100%', accentColor: '#6366f1' }}
+                    />
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: '#3265c9',
+                        marginBottom: 4,
+                      }}
+                    >
+                      احتمال الخلل
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 36,
+                        fontWeight: 700,
+                        fontFamily: 'monospace',
+                        color:
+                          simAnomalyProb > 60
+                            ? '#ef4444'
+                            : simAnomalyProb > 30
+                            ? '#f59e0b'
+                            : '#22c55e',
+                      }}
+                    >
+                      {simAnomalyProb}%
+                    </div>
+                    <div
+                      style={{ fontSize: 11, color: '#4c1d95', marginTop: 2 }}
+                    >
+                      {simAnomalyProb > 60
+                        ? 'خطورة مرتفعة'
+                        : simAnomalyProb > 30
+                        ? 'مرتفع'
+                        : 'طبيعي'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT PANEL */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* NRW + Reservoir combined */}
+            <div
+              style={{
+                background: '#0a1628',
+                border: '1px solid rgba(56,189,248,.1)',
+                borderRadius: 12,
+                padding: 14,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 10,
+                  color: '#475569',
+                  fontFamily: 'monospace',
+                  letterSpacing: 0.5,
+                  marginBottom: 10,
+                }}
+              >
+                نظرة هيدروليكية
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <NRWGauge nrw={gov.nrw} target={gov.target_nrw} />
+                <div
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 5,
+                    fontSize: 11,
+                  }}
+                >
+                  {[
+                    {
+                      l: 'الكمية الواصلة',
+                      v: `${mass.deliveredM3?.toFixed(1) ?? 0} م³`,
+                      c: '#22c55e',
+                    },
+                    {
+                      l: 'الفاقد الحالي',
+                      v: `−${mass.systemLossM3?.toFixed(1) ?? 0} م³`,
+                      c: '#ef4444',
+                    },
+                    {
+                      l: 'إجمالي الدورة',
+                      v: `${mass.cycleOutflowM3?.toFixed(1) ?? 0} م³`,
+                      c: '#38bdf8',
+                    },
+                    {
+                      l: 'معدل التدفق',
+                      v: `${mass.totalOutflowM3PerHr?.toFixed(0) ?? 0} م³/ساعة`,
+                      c: '#22d3ee',
+                    },
+                    { l: 'الارتفاع', v: `${gov.elev}m`, c: '#94a3b8' },
+                  ].map(({ l, v, c }) => (
+                    <div
+                      key={l}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <span style={{ color: '#475569' }}>{l}</span>
+                      <span
+                        style={{
+                          color: c,
+                          fontFamily: 'monospace',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {v}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Solution box */}
+            <div
+              style={{
+                background: '#0a1628',
+                border: `1px solid ${TYPE_CONFIG[worstType].color}40`,
+                borderRight: `3px solid ${TYPE_CONFIG[worstType].color}`,
+                borderRadius: 12,
+                padding: 14,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: TYPE_CONFIG[worstType].color,
+                  marginBottom: 8,
+                }}
+              >
+                {worstType === 'normal' && 'النظام طبيعي — استمرار المراقبة'}
+                {worstType === 'leak' && 'تسرب مكتشف — فحص المقطع'}
+                {worstType === 'burst' && 'انفجار حرج — عزل فوري'}
+                {worstType === 'theft' && 'اشتباه سرقة — تفتيش الوصلات'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {worstType === 'normal' &&
+                  [
+                    'جميع القراءات ضمن الحدود الطبيعية.',
+                    'لا حاجة لتدخل ميداني حالياً.',
+                  ].map((s, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        fontSize: 11,
+                        color: '#475569',
+                        paddingBottom: 4,
+                        borderBottom: '1px solid rgba(56,189,248,.05)',
+                      }}
+                    >
+                      {s}
+                    </div>
+                  ))}
+                {worstType === 'leak' &&
+                  [
+                    'إرسال فريق كشف ميداني للمقطع المحدد.',
+                    'Reduce network pressure 15%.',
+                    'فتح بلاغ صيانة بأولوية متوسطة.',
+                  ].map((s, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        fontSize: 11,
+                        color: '#475569',
+                        paddingBottom: 4,
+                        borderBottom: '1px solid rgba(56,189,248,.05)',
+                      }}
+                    >
+                      {s}
+                    </div>
+                  ))}
+                {worstType === 'burst' &&
+                  [
+                    'عزل القطاع المتأثر فوراً.',
+                    'تنبيه فريق الاستجابة الطارئة.',
+                    'إرسال فريق الإصلاح خلال أقل من ساعتين.',
+                    'توثيق كمية الفاقد للإدارة.',
+                  ].map((s, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        fontSize: 11,
+                        color: '#475569',
+                        paddingBottom: 4,
+                        borderBottom: '1px solid rgba(56,189,248,.05)',
+                      }}
+                    >
+                      {s}
+                    </div>
+                  ))}
+                {worstType === 'theft' &&
+                  [
+                    'تفتيش الوصلات الجانبية ميدانياً.',
+                    'مراجعة سجلات الاستهلاك آخر 72 ساعة.',
+                    'التنسيق مع الجهة المختصة بالتحقق.',
+                  ].map((s, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        fontSize: 11,
+                        color: '#475569',
+                        paddingBottom: 4,
+                        borderBottom: '1px solid rgba(56,189,248,.05)',
+                      }}
+                    >
+                      {s}
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* Selected segment detail */}
+            {selectedSeg && (
+              <div
+                style={{
+                  background: '#0a1628',
+                  border: '1px solid rgba(56,189,248,.15)',
+                  borderRadius: 12,
+                  padding: 14,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 10,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: '#38bdf8',
+                      fontFamily: 'monospace',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {selectedSeg.from} → {selectedSeg.to}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: '2px 8px',
+                      borderRadius: 4,
+                      background: `${TYPE_DOT[selectedSeg.predType]}22`,
+                      color: TYPE_DOT[selectedSeg.predType],
+                      fontWeight: 600,
+                    }}
+                  >
+                    {getTypeLabelAr(selectedSeg.predType)}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '4px 12px',
+                  }}
+                >
+                  {[
+                    [
+                      'التدفق الداخل',
+                      `${selectedSeg.flowIn.toFixed(2)} لتر/دقيقة`,
+                      '#38bdf8',
+                    ],
+                    [
+                      'التدفق الخارج',
+                      `${selectedSeg.flowOut.toFixed(2)} لتر/دقيقة`,
+                      '#22c55e',
+                    ],
+                    [
+                      'نسبة فقد التدفق',
+                      `${selectedSeg.flowLoss.toFixed(2)}%`,
+                      TYPE_DOT[selectedSeg.predType],
+                    ],
+                    [
+                      'الفاقد الزائد',
+                      `${selectedSeg.excessLoss.toFixed(2)}%`,
+                      TYPE_DOT[selectedSeg.predType],
+                    ],
+                    [
+                      'الضغط الداخل',
+                      `${selectedSeg.pressIn.toFixed(2)} PSI`,
+                      '#a855f7',
+                    ],
+                    [
+                      'الضغط الخارج',
+                      `${selectedSeg.pressOut.toFixed(2)} PSI`,
+                      '#f59e0b',
+                    ],
+                    [
+                      'هبوط الضغط المتوقع',
+                      `${selectedSeg.dpPred.toFixed(3)}`,
+                      '#64748b',
+                    ],
+                    [
+                      'انحراف الضغط',
+                      `${selectedSeg.dpDev.toFixed(3)}`,
+                      '#a855f7',
+                    ],
+                    ['عمر الأنبوب', `${selectedSeg.age} سنة`, '#94a3b8'],
+                    ['طول الأنبوب', `${selectedSeg.len} m`, '#94a3b8'],
+                    ['معامل الخشونة', `${selectedSeg.hw}`, '#94a3b8'],
+                    [
+                      'الثقة',
+                      `${(selectedSeg.confidence * 100).toFixed(0)}%`,
+                      TYPE_DOT[selectedSeg.predType],
+                    ],
+                  ].map(([l, v, c]) => (
+                    <div
+                      key={l}
+                      style={{
+                        padding: '3px 0',
+                        borderBottom: '1px solid rgba(56,189,248,.04)',
+                      }}
+                    >
+                      <div style={{ fontSize: 9, color: '#475569' }}>{l}</div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: c,
+                          fontFamily: 'monospace',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {v}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div
+                  style={{
+                    marginTop: 10,
+                    paddingTop: 8,
+                    borderTop: '1px solid rgba(56,189,248,.06)',
+                  }}
+                >
+                  <div
+                    style={{ fontSize: 9, color: '#475569', marginBottom: 6 }}
+                  >
+                    توافق النماذج
+                  </div>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr 1fr 1fr',
+                      gap: 4,
+                    }}
+                  >
+                    {[
+                      ['LGB', selectedSeg.models.lgb],
+                      ['XGB', selectedSeg.models.xgb],
+                      ['NN', selectedSeg.models.nn],
+                      ['LSTM', selectedSeg.models.lstm],
+                    ].map(([n, v]) => (
+                      <div key={n} style={{ textAlign: 'center' }}>
+                        <div
+                          style={{
+                            fontSize: 9,
+                            color: '#475569',
+                            marginBottom: 2,
+                          }}
+                        >
+                          {n}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 14,
+                            fontFamily: 'monospace',
+                            fontWeight: 700,
+                            color:
+                              v > 50
+                                ? TYPE_DOT[selectedSeg.predType]
+                                : '#38bdf8',
+                          }}
+                        >
+                          {v.toFixed(0)}%
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Alert log */}
+            <div
+              style={{
+                background: '#0a1628',
+                border: '1px solid rgba(56,189,248,.1)',
+                borderRadius: 12,
+                padding: 14,
+                flex: 1,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 10,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: '#475569',
+                    fontFamily: 'monospace',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  سجل الإنذارات
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: '#ef4444',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {allAlerts.length}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 5,
+                  maxHeight: 260,
+                  overflowY: 'auto',
+                }}
+              >
+                {allAlerts.length === 0 && (
+                  <div
+                    style={{
+                      color: '#334155',
+                      fontSize: 11,
+                      textAlign: 'center',
+                      padding: 16,
+                    }}
+                  >
+                    لا توجد إنذارات حالياً...
+                  </div>
+                )}
+                {allAlerts.slice(0, 20).map((a, i) => {
+                  const tc = TYPE_DOT[a.predType];
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => setSelectedSeg(a)}
+                      style={{
+                        background: '#0d1830',
+                        borderRadius: 7,
+                        padding: '8px 10px',
+                        borderRight: `3px solid ${tc}`,
+                        cursor: 'pointer',
+                        animation: 'slideIn .2s ease',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          marginBottom: 3,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: '#e2e8f0',
+                            fontFamily: 'monospace',
+                          }}
+                        >
+                          {getBranchLabelAr(a.branch)} · مستوى {a.depth}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 9,
+                            color: '#475569',
+                            fontFamily: 'monospace',
+                          }}
+                        >
+                          {a.ts}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 10, color: '#64748b' }}>
+                        {a.from} → {a.to}
+                      </div>
+                      <div style={{ fontSize: 10, color: '#64748b' }}>
+                        ΔFlow: {a.flowLoss?.toFixed(1)}% · DP:{' '}
+                        {a.dpDev?.toFixed(3)}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: tc,
+                          fontWeight: 600,
+                          marginTop: 2,
+                          fontFamily: 'monospace',
+                        }}
+                      >
+                        {a.predType.toUpperCase()} ·{' '}
+                        {(a.confidence * 100).toFixed(0)}%
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── BOTTOM: All governorates NRW + reservoir overview ── */}
+        <div
+          style={{
+            background: '#0a1628',
+            border: '1px solid rgba(56,189,248,.08)',
+            borderRadius: 12,
+            padding: 14,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: '#475569',
+              fontFamily: 'monospace',
+              letterSpacing: 0.5,
+              marginBottom: 12,
+            }}
+          >
+            نظرة عامة على المحافظات — مستوى الخزانات × الفاقد NRW
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(12,1fr)',
+              gap: 8,
+            }}
+          >
+            {Object.entries(NETWORK).map(([k, v]) => {
+              const nrwPct = Math.round(v.nrw * 100);
+              const rPct =
+                ((reservoirLevels[k] ?? v.reservoirCap) / v.reservoirCap) * 100;
+              const isActive = k === govKey;
+              return (
+                <div
+                  key={k}
+                  onClick={() => setGovKey(k)}
+                  style={{
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                    padding: '8px 4px',
+                    borderRadius: 8,
+                    background: isActive
+                      ? 'rgba(56,189,248,.08)'
+                      : 'transparent',
+                    border: `1px solid ${
+                      isActive ? 'rgba(56,189,248,.3)' : 'transparent'
+                    }`,
+                    transition: 'all .15s',
+                  }}
+                >
+                  {/* Mini tank */}
+                  <div
+                    style={{
+                      width: 18,
+                      height: 44,
+                      margin: '0 auto 4px',
+                      position: 'relative',
+                      background: '#0f172a',
+                      borderRadius: 3,
+                      overflow: 'hidden',
+                      border: '1px solid #1e293b',
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: `${rPct}%`,
+                        background:
+                          rPct > 60
+                            ? '#22c55e'
+                            : rPct > 30
+                            ? '#f59e0b'
+                            : '#ef4444',
+                        transition: 'height .4s',
+                      }}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 9,
+                      color: isActive ? '#38bdf8' : '#64748b',
+                      fontWeight: isActive ? 700 : 400,
+                    }}
+                  >
+                    {v.label}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 9,
+                      color:
+                        rPct > 60
+                          ? '#22c55e'
+                          : rPct > 30
+                          ? '#f59e0b'
+                          : '#ef4444',
+                      fontFamily: 'monospace',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {rPct.toFixed(0)}%
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 8,
+                      color:
+                        v.nrw > 0.5
+                          ? '#ef4444'
+                          : v.nrw > 0.4
+                          ? '#f59e0b'
+                          : '#22c55e',
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    NRW {nrwPct}%
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+        @keyframes slideIn { from{transform:translateX(-5px);opacity:0} to{transform:none;opacity:1} }
+        ::-webkit-scrollbar{width:3px;height:3px}
+        ::-webkit-scrollbar-track{background:#0a1628}
+        ::-webkit-scrollbar-thumb{background:rgba(56,189,248,.25);border-radius:2px}
+        input[type=range]{-webkit-appearance:none;height:4px;border-radius:2px;outline:none}
+        input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;cursor:pointer}
+      `}</style>
+    </div>
+  );
+}
